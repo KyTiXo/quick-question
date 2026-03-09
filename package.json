@@ -1,6 +1,10 @@
 {
   "name": "quick-question-llm",
   "version": "0.1.3",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KyTiXo/quick-question"
+  },
   "bin": {
     "qq": "src/app/main.ts"
   },
