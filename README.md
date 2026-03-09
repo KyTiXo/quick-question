@@ -1,4 +1,4 @@
-# Quick Question (qq)
+# Quick Question LLM (qq)
 
 Command output is one of the biggest sources of token waste in AI-assisted workflows.
 
@@ -21,7 +21,7 @@ Instead of dumping 2,000 lines of test output into your agent, you get 12 words.
 
 ```bash
 ollama pull qwen3.5:2b   # make sure ollama serve is running
-npm install -g quick-question
+npm install -g quick-question-llm
 ```
 
 ## Help

@@ -6,16 +6,18 @@ import { COMPILE_TARGETS } from "../src/app/version"
 
 const root = path.resolve(import.meta.dir, "..")
 const entrypoint = path.join(root, "src", "app", "main.ts")
+const forceAllTargets = process.argv.includes("--all")
 
 const targetsEnv = process.env.QQ_TARGETS
-const targets = targetsEnv
-  ? COMPILE_TARGETS.filter((t) =>
-      targetsEnv
-        .split(",")
-        .map((s) => s.trim())
-        .includes(t.bunTarget)
-    )
-  : [...COMPILE_TARGETS]
+const targets =
+  !forceAllTargets && targetsEnv
+    ? COMPILE_TARGETS.filter((t) =>
+        targetsEnv
+          .split(",")
+          .map((s) => s.trim())
+          .includes(t.bunTarget)
+      )
+    : [...COMPILE_TARGETS]
 
 for (const target of targets) {
   const outfile = path.join(root, target.output)

@@ -1,5 +1,5 @@
 {
-  "name": "quick-question",
+  "name": "quick-question-llm",
   "version": "0.1.1",
   "bin": {
     "qq": "src/app/main.ts"
@@ -19,7 +19,7 @@
   "scripts": {
     "dev": "bun run src/app/main.ts",
     "build": "bun run scripts/build-binaries.ts",
-    "build:all": "bun run scripts/build-binaries.ts",
+    "build:all": "bun run scripts/build-binaries.ts --all",
     "prepare": "husky",
     "test": "bun test --max-concurrency=1",
     "test:live": "bun run scripts/test-live-smoke.ts",
