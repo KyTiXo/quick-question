@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "effect-v4": {
+      "source": "teeverc/effect-ts",
+      "sourceType": "github",
+      "computedHash": "f62cca6e0d653b18a02812985d097f2c0f661d146fa14f58cdbb9a7d9d6009a8"
+    }
+  }
+}

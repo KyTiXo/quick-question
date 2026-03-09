@@ -1,0 +1,8 @@
+[test]
+coverage = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+# Bun 1.3.x undercounts function coverage for generated Effect service/error classes.
+coverageThreshold = { line = 1.0, statement = 1.0 }
+coveragePathIgnorePatterns = ["src/app/main.ts"]

@@ -1,0 +1,53 @@
+{
+  "name": "quick-question",
+  "version": "0.1.0",
+  "bin": {
+    "qq": "src/app/main.ts"
+  },
+  "module": "index.ts",
+  "type": "module",
+  "keywords": [
+    "llm",
+    "token",
+    "compression",
+    "ollama",
+    "openai",
+    "agent",
+    "cli",
+    "distill"
+  ],
+  "scripts": {
+    "dev": "bun run src/app/main.ts",
+    "build": "bun run scripts/build-binaries.ts",
+    "build:all": "bun run scripts/build-binaries.ts",
+    "prepare": "husky",
+    "test": "bun test --max-concurrency=1",
+    "test:live": "bun run scripts/test-live-smoke.ts",
+    "typecheck": "tsc --noEmit",
+    "check:all": "biome check --write . && tsc --noEmit && bun test --max-concurrency=1",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "lint:ci": "biome ci .",
+    "lint:eslint": "eslint .",
+    "lint:eslint:fix": "eslint . --fix",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "ai:check": "bun run check:all"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.6",
+    "@effect/language-service": "^0.79.0",
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "latest",
+    "eslint": "^10.0.3",
+    "husky": "^9.1.7",
+    "typescript-eslint": "^8.56.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "^4.0.0-beta.29",
+    "effect": "^4.0.0-beta.29"
+  }
+}
