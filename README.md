@@ -23,11 +23,26 @@
 
 </div>
 
----
+## Quick Start
 
-> **What's new in 0.1.7** - All-in-one **local provider** powered by `node-llama-cpp` with automatic GGUF model download. No Ollama required, no cloud account, no API key - just `qq config provider local` and go. Watch mode now summarizes **only the delta** between cycles instead of re-summarizing the full stream, and per-provider model config means switching between `ollama`, `openai`, and `local` always restores your last-saved model.
+Pipe any command's output through `qq` with a short question:
 
----
+```shell
+# Install
+bun add -g quick-question-llm
+ollama pull qwen3.5:2b
+
+# Did the tests pass?
+bun test 2>&1 | qq "did the tests pass?"
+# > 3 tests failed: auth.test.ts lines 42, 78, 91
+
+# Other great use cases
+git diff | qq "what changed?"
+
+rg -n "auth|session|token" src/ | qq "where is authentication handled?"
+
+terraform plan 2>&1 | qq "is this safe to apply?"
+```
 
 ## Features
 
@@ -59,65 +74,6 @@ The numbers vary by input, but the pattern is consistent: noisy command output c
 
 `qq` is built around [Qwen 3.5](https://qwenlm.github.io/blog/qwen3/) - a model family so good at compression and summarization that the **2B variant runs on nearly any computer**. No GPU required. If your machine can run a browser, it can run `qq`.
 
-## Install
-
-### npm (recommended)
-
-```bash
-npm install -g quick-question-llm
-```
-
-Verify it works:
-
-```bash
-echo "hello world" | qq "what does this say?"
-```
-
-### Bun
-
-```bash
-bun add -g quick-question-llm
-```
-
-If you plan to use the `local` provider, trust the native dependency:
-
-```bash
-bun pm trust node-llama-cpp
-```
-
-### Without installing
-
-```bash
-npx quick-question-llm --help
-```
-
-> Standalone binaries can be built locally with `bun run build:all`, but the npm package is the primary distribution path.
-
-## Quick Start
-
-Pipe any command's output through `qq` with a short question:
-
-```bash
-# Did the tests pass?
-bun test 2>&1 | qq "did the tests pass?"
-
-# What changed in this diff?
-git diff | qq "what changed?"
-
-# Where is auth handled?
-rg -n "auth|session|token" src/ | qq "where is authentication handled?"
-
-# Is this safe to apply?
-terraform plan 2>&1 | qq "is this safe to apply?"
-```
-
-Instead of dumping 2,000 lines of test output into your agent, you get something like:
-
-```
-3 tests failed: auth.test.ts lines 42, 78, 91
-```
-
-Twelve words instead of two thousand lines.
 
 ## Providers
 
