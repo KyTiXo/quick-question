@@ -9,7 +9,7 @@
 
 <br/>
 
-[![CI](https://github.com/KyTiXo/quick-question/actions/workflows/ci.yml/badge.svg)](https://github.com/KyTiXo/quick-question/actions/workflows/ci.yml)
+[![CI](https://github.com/KyTiXo/quick-question/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/KyTiXo/quick-question/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/KyTiXo/quick-question/badges/qq-tests.json)](https://github.com/KyTiXo/quick-question/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/KyTiXo/quick-question/badges/qq-coverage.json)](https://github.com/KyTiXo/quick-question/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/quick-question-llm)](https://www.npmjs.com/package/quick-question-llm)

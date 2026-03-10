@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - ".github/workflows/**"
       - "src/**"
       - "scripts/**"
       - "test/**"
@@ -52,15 +53,21 @@ jobs:
         run: bun run check:all
 
       - name: Build CLI
-        run: bun run build:all
+        run: bun run build
 
       - name: Parse test results
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: results
         run: |
-          PASS=$(grep -oE '[0-9]+ pass' test-output.txt | grep -oE '[0-9]+')
-          FAIL=$(grep -oE '[0-9]+ fail' test-output.txt | grep -oE '[0-9]+')
-          COVERAGE=$(grep 'All files' test-output.txt | awk -F'|' '{gsub(/[ \t]/, "", $3); print $3}')
+          set -euo pipefail
+
+          PASS=$(awk '/^[[:space:]]*[0-9]+ pass$/ { print $1 }' test-output.txt | tail -n1)
+          FAIL=$(awk '/^[[:space:]]*[0-9]+ fail$/ { print $1 }' test-output.txt | tail -n1)
+          COVERAGE=$(awk -F'|' '/All files/ { gsub(/[ \t]/, "", $3); print $3 }' test-output.txt | tail -n1)
+
+          [ -n "${PASS}" ] || { echo "::error::Could not parse passed test count"; exit 1; }
+          [ -n "${FAIL}" ] || { echo "::error::Could not parse failed test count"; exit 1; }
+          [ -n "${COVERAGE}" ] || { echo "::error::Could not parse line coverage"; exit 1; }
 
           COV_INT=${COVERAGE%.*}
           if [ "$COV_INT" -ge 90 ]; then COV_COLOR="brightgreen"
@@ -87,13 +94,18 @@ jobs:
           EOF
 
       - name: Publish badges
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
+          set -euo pipefail
           cd badges
           git init -b badges
           git add .
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --cached --quiet; then
+            echo "No badge changes to publish."
+            exit 0
+          fi
           git commit -m "update badges"
           git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" badges
         env:
