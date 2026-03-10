@@ -29,6 +29,7 @@
     "test:live": "bun run scripts/test-live-smoke.ts",
     "typecheck": "tsc --noEmit",
     "check:all": "biome check --write . && tsc --noEmit && bun test --max-concurrency=1",
+    "check:all:qq": "bun run check:all 2>&1 | qq 'did the tests pass?'",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "lint:ci": "biome ci .",
