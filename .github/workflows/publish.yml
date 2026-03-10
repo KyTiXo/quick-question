@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js for version bump and npm publish
         uses: actions/setup-node@v4
@@ -24,13 +26,38 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Bump patch version
+        id: version
         run: |
           npm version patch --no-git-tag-version
           VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate full CHANGELOG.md
+        uses: orhun/git-cliff-action@v4
+        id: changelog
+        with:
+          config: cliff.toml
+          args: --tag v${{ steps.version.outputs.version }} --verbose
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@v4
+        id: cliff-notes
+        with:
+          config: cliff.toml
+          args: --unreleased --tag v${{ steps.version.outputs.version }} --strip header
+        env:
+          OUTPUT: /tmp/cliff-notes.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Commit version bump and changelog
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git commit -m "chore: release v${VERSION} [skip ci]"
+          git add package.json CHANGELOG.md
+          git commit -m "chore: release v${{ steps.version.outputs.version }} [skip ci]"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -49,11 +76,49 @@ jobs:
       - name: Verify dist artifacts
         run: bun run scripts/verify-dist.ts
 
-      - name: Get version from package.json
-        id: version
+      - name: Stage binaries for release
         run: |
-          VERSION=$(jq -r '.version' package.json)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          mkdir -p release-assets
+          cp .dist/bun-darwin-arm64/qq release-assets/qq-darwin-arm64
+          cp .dist/bun-darwin-x64/qq release-assets/qq-darwin-x64
+          cp .dist/bun-linux-arm64/qq release-assets/qq-linux-arm64
+          cp .dist/bun-linux-x64/qq release-assets/qq-linux-x64
+          cp .dist/bun-linux-x64-baseline/qq release-assets/qq-linux-x64-baseline
+          cp .dist/bun-linux-x64-modern/qq release-assets/qq-linux-x64-modern
+          cp .dist/bun-windows-x64/qq.exe release-assets/qq-windows-x64.exe
+          cp .dist/bun-windows-x64-baseline/qq.exe release-assets/qq-windows-x64-baseline.exe
+          cp .dist/bun-windows-x64-modern/qq.exe release-assets/qq-windows-x64-modern.exe
+
+      - name: Build release body
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          REPO="${{ github.repository }}"
+          {
+            cat /tmp/cliff-notes.md
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Installation"
+            echo ""
+            echo "### npm (recommended)"
+            echo '```'
+            echo "npm install -g quick-question-llm"
+            echo '```'
+            echo ""
+            echo "### Direct Download (v${VERSION})"
+            echo ""
+            echo "| Platform | Arch | Binary |"
+            echo "|----------|------|--------|"
+            echo "| macOS | Apple Silicon | [qq-darwin-arm64](https://github.com/${REPO}/releases/download/v${VERSION}/qq-darwin-arm64) |"
+            echo "| macOS | Intel (x64) | [qq-darwin-x64](https://github.com/${REPO}/releases/download/v${VERSION}/qq-darwin-x64) |"
+            echo "| Linux | arm64 | [qq-linux-arm64](https://github.com/${REPO}/releases/download/v${VERSION}/qq-linux-arm64) |"
+            echo "| Linux | x64 | [qq-linux-x64](https://github.com/${REPO}/releases/download/v${VERSION}/qq-linux-x64) |"
+            echo "| Linux | x64 (baseline) | [qq-linux-x64-baseline](https://github.com/${REPO}/releases/download/v${VERSION}/qq-linux-x64-baseline) |"
+            echo "| Linux | x64 (modern) | [qq-linux-x64-modern](https://github.com/${REPO}/releases/download/v${VERSION}/qq-linux-x64-modern) |"
+            echo "| Windows | x64 | [qq-windows-x64.exe](https://github.com/${REPO}/releases/download/v${VERSION}/qq-windows-x64.exe) |"
+            echo "| Windows | x64 (baseline) | [qq-windows-x64-baseline.exe](https://github.com/${REPO}/releases/download/v${VERSION}/qq-windows-x64-baseline.exe) |"
+            echo "| Windows | x64 (modern) | [qq-windows-x64-modern.exe](https://github.com/${REPO}/releases/download/v${VERSION}/qq-windows-x64-modern.exe) |"
+          } > /tmp/release-body.md
 
       - name: Publish to npm
         run: npm publish --provenance --access public
@@ -72,6 +137,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          generate_release_notes: true
+          body_path: /tmp/release-body.md
+          files: |
+            release-assets/qq-darwin-arm64
+            release-assets/qq-darwin-x64
+            release-assets/qq-linux-arm64
+            release-assets/qq-linux-x64
+            release-assets/qq-linux-x64-baseline
+            release-assets/qq-linux-x64-modern
+            release-assets/qq-windows-x64.exe
+            release-assets/qq-windows-x64-baseline.exe
+            release-assets/qq-windows-x64-modern.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
