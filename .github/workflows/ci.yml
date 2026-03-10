@@ -70,7 +70,7 @@ jobs:
           [ -n "${COVERAGE}" ] || { echo "::error::Could not parse line coverage"; exit 1; }
 
           COV_INT=${COVERAGE%.*}
-          if [ "$COV_INT" -ge 90 ]; then COV_COLOR="brightgreen"
+          if [ "$COV_INT" -ge 90 ]; then COV_COLOR="darkgreen"
           elif [ "$COV_INT" -ge 80 ]; then COV_COLOR="green"
           elif [ "$COV_INT" -ge 70 ]; then COV_COLOR="yellow"
           else COV_COLOR="red"; fi
