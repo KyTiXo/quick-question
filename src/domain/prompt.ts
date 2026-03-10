@@ -19,13 +19,34 @@ const textFromPart = (part: Prompt.Part) => {
   }
 }
 
-const renderMessage = (message: Prompt.Message) =>
+const textFromMessage = (message: Prompt.Message) =>
   typeof message.content === "string"
-    ? `${message.role.toUpperCase()}:\n${message.content}`
-    : `${message.role.toUpperCase()}:\n${message.content.map(textFromPart).join("\n")}`
+    ? message.content
+    : message.content.map(textFromPart).join("\n")
+
+const renderMessage = (message: Prompt.Message) =>
+  `${message.role.toUpperCase()}:\n${textFromMessage(message)}`
 
 export const renderPrompt = (input: Prompt.RawInput) =>
   Prompt.make(input).content.map(renderMessage).join("\n\n")
+
+export const splitPromptForLocalChat = (input: Prompt.RawInput) => {
+  const messages = Prompt.make(input).content
+  const nonSystemMessages = messages.filter((message) => message.role !== "system")
+
+  return {
+    systemPrompt:
+      messages
+        .filter((message) => message.role === "system")
+        .map(textFromMessage)
+        .filter((text) => text.trim().length > 0)
+        .join("\n\n") || undefined,
+    prompt:
+      nonSystemMessages.length === 1 && nonSystemMessages[0]?.role === "user"
+        ? textFromMessage(nonSystemMessages[0])
+        : nonSystemMessages.map(renderMessage).join("\n\n"),
+  }
+}
 
 export const buildBatchPrompt = (question: string, input: string) =>
   Prompt.make([

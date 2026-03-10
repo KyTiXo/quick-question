@@ -227,15 +227,19 @@ describe("platform/http + services/model-gateway", () => {
   })
 
   it("delegates local provider calls through the gateway", async () => {
-    const prompt = [{ role: "user", content: "hello" }] as const
+    const prompt = [
+      { role: "system", content: "be concise" },
+      { role: "user", content: "hello" },
+    ] as const
     const gateway = await Effect.runPromise(
       ModelGateway.make.pipe(
         Effect.provide(
-          localLlamaLayer(({ model, prompt: rendered, timeoutMs, maxTokens }) => {
+          localLlamaLayer(({ model, systemPrompt, prompt: rendered, timeoutMs, maxTokens }) => {
             expect(model).toBe(localConfig.model)
+            expect(systemPrompt).toBe("be concise")
             expect(timeoutMs).toBe(100)
             expect(maxTokens).toBe(200)
-            expect(rendered).toContain("hello")
+            expect(rendered).toBe("hello")
 
             return Effect.succeed("local answer")
           })

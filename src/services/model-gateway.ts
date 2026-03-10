@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as ServiceMap from "effect/ServiceMap"
 import type { Prompt } from "effect/unstable/ai"
-import { renderPrompt } from "@/domain/prompt"
+import { renderPrompt, splitPromptForLocalChat } from "@/domain/prompt"
 import { requestJson } from "@/platform/http"
 import type { ResolvedRunConfig } from "@/schema/config"
 import { ModelError } from "@/schema/errors"
@@ -22,6 +22,7 @@ export class ModelGateway extends ServiceMap.Service<ModelGateway>()("ModelGatew
         prompt: Prompt.RawInput
       }) => {
         const renderedPrompt = renderPrompt(prompt)
+        const localPrompt = splitPromptForLocalChat(prompt)
 
         return config.provider === "openai"
           ? requestJson({
@@ -57,7 +58,8 @@ export class ModelGateway extends ServiceMap.Service<ModelGateway>()("ModelGatew
           : config.provider === "local"
             ? localLlama.generateText({
                 model: config.model,
-                prompt: renderedPrompt,
+                systemPrompt: localPrompt.systemPrompt,
+                prompt: localPrompt.prompt,
                 timeoutMs: config.timeoutMs,
                 maxTokens: config.maxTokens,
               })

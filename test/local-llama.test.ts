@@ -55,19 +55,19 @@ describe("services/local-llama", () => {
     const directory = await makeTempDir()
     const configPath = path.join(directory, "config.json")
     const calls = {
-      completionCreates: 0,
+      sessionCreates: 0,
       contextCreates: 0,
       generate: 0,
       loadModel: [] as string[],
       resolved: [] as Array<{ model: string; directory: string | undefined }>,
     }
 
-    class FakeCompletion {
+    class FakeSession {
       constructor(_options: unknown) {
-        calls.completionCreates += 1
+        calls.sessionCreates += 1
       }
 
-      generateCompletion(_prompt: string, options?: { maxTokens?: number; temperature?: number }) {
+      prompt(_prompt: string, options?: { maxTokens?: number; temperature?: number }) {
         calls.generate += 1
         expect(options?.maxTokens).toBe(maxTokens)
         expect(options?.temperature).toBe(0.1)
@@ -81,7 +81,7 @@ describe("services/local-llama", () => {
 
     localLlamaOps.importModule = () =>
       Promise.resolve({
-        LlamaCompletion: FakeCompletion,
+        LlamaChatSession: FakeSession,
         getLlama: () =>
           Promise.resolve({
             loadModel: ({ modelPath }: { modelPath: string }) => {
@@ -138,7 +138,7 @@ describe("services/local-llama", () => {
     ])
     expect(calls.loadModel).toEqual([path.join(directory, "models", "downloaded.gguf")])
     expect(calls.contextCreates).toBe(1)
-    expect(calls.completionCreates).toBe(1)
+    expect(calls.sessionCreates).toBe(2)
     expect(calls.generate).toBe(2)
   })
 
@@ -149,8 +149,8 @@ describe("services/local-llama", () => {
     await writeFile(modelPath, "gguf")
     const loadModelCalls: Array<string> = []
 
-    class FakeCompletion {
-      generateCompletion() {
+    class FakeSession {
+      prompt() {
         return Promise.resolve("ok")
       }
 
@@ -161,7 +161,7 @@ describe("services/local-llama", () => {
 
     localLlamaOps.importModule = () =>
       Promise.resolve({
-        LlamaCompletion: FakeCompletion,
+        LlamaChatSession: FakeSession,
         getLlama: () =>
           Promise.resolve({
             loadModel: ({ modelPath }: { modelPath: string }) => {
@@ -229,8 +229,8 @@ describe("services/local-llama", () => {
     const directory = await makeTempDir()
     const configPath = path.join(directory, "config.json")
 
-    class FakeCompletion {
-      generateCompletion() {
+    class FakeSession {
+      prompt() {
         return Promise.resolve("   ")
       }
 
@@ -241,7 +241,7 @@ describe("services/local-llama", () => {
 
     localLlamaOps.importModule = () =>
       Promise.resolve({
-        LlamaCompletion: FakeCompletion,
+        LlamaChatSession: FakeSession,
         getLlama: () =>
           Promise.resolve({
             loadModel: () =>

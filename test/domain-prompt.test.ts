@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import { Prompt } from "effect/unstable/ai"
-import { buildBatchPrompt, buildWatchPrompt, renderPrompt } from "@/domain/prompt"
+import {
+  buildBatchPrompt,
+  buildWatchPrompt,
+  renderPrompt,
+  splitPromptForLocalChat,
+} from "@/domain/prompt"
 
 describe("domain/prompt", () => {
   it("renders string and structured prompt messages", () => {
@@ -54,10 +59,13 @@ describe("domain/prompt", () => {
   it("builds batch and watch prompts", () => {
     const batch = renderPrompt(buildBatchPrompt("what changed?", "diff"))
     const watch = renderPrompt(buildWatchPrompt("what changed?", "before", "after"))
+    const local = splitPromptForLocalChat(buildBatchPrompt("what changed?", "diff"))
 
     expect(batch).toContain("Question: what changed?\n\nCommand output:\ndiff")
     expect(batch).toContain("quick-question: Insufficient information")
     expect(watch).toContain("Previous cycle:\nbefore")
     expect(watch).toContain("Current cycle:\nafter")
+    expect(local.systemPrompt).toContain("You compress command output")
+    expect(local.prompt).toBe("Question: what changed?\n\nCommand output:\ndiff")
   })
 })

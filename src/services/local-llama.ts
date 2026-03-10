@@ -10,10 +10,9 @@ type NodeLlamaModule = typeof import("node-llama-cpp")
 type LlamaRuntime = Awaited<ReturnType<NodeLlamaModule["getLlama"]>>
 type LocalModel = Awaited<ReturnType<LlamaRuntime["loadModel"]>>
 type LocalContext = Awaited<ReturnType<LocalModel["createContext"]>>
-type LocalCompletion = InstanceType<NodeLlamaModule["LlamaCompletion"]>
+type LocalChatSession = InstanceType<NodeLlamaModule["LlamaChatSession"]>
 
 interface LoadedLocalModel {
-  completion: LocalCompletion
   context: LocalContext
   model: LocalModel
   modelPath: string
@@ -30,11 +29,7 @@ const resolveLocalGenerationError = (cause: unknown) =>
   localModelError("Local provider failed while generating text.", cause)
 
 const disposeLoadedLocalModel = (loaded: LoadedLocalModel) =>
-  Promise.allSettled([
-    Promise.resolve(loaded.completion.dispose()),
-    loaded.context.dispose(),
-    loaded.model.dispose(),
-  ]).then(() => undefined)
+  Promise.allSettled([loaded.context.dispose(), loaded.model.dispose()]).then(() => undefined)
 
 export const localLlamaOps = {
   importModule: () => import("node-llama-cpp"),
@@ -90,11 +85,7 @@ export class LocalLlama extends ServiceMap.Service<LocalLlama>()("LocalLlama", {
           })
           const loadedModel = await llama.loadModel({ modelPath })
           const context = await loadedModel.createContext()
-          const completion = new module.LlamaCompletion({
-            contextSequence: context.getSequence(),
-          })
           const loaded = {
-            completion,
             context,
             model: loadedModel,
             modelPath,
@@ -116,11 +107,13 @@ export class LocalLlama extends ServiceMap.Service<LocalLlama>()("LocalLlama", {
       Effect.succeed({
         generateText: ({
           model,
+          systemPrompt,
           prompt,
           timeoutMs,
           maxTokens,
         }: {
           model: string
+          systemPrompt?: string
           prompt: string
           timeoutMs: number
           maxTokens: number
@@ -143,6 +136,10 @@ export class LocalLlama extends ServiceMap.Service<LocalLlama>()("LocalLlama", {
                 )
               )
 
+            const module = yield* Effect.tryPromise({
+              try: () => loadModule(),
+              catch: (cause) => resolveLocalModelError(model, cause),
+            })
             const loaded = yield* Effect.tryPromise({
               try: () => loadModel(model, modelsDirectory),
               catch: (cause) => resolveLocalModelError(model, cause),
@@ -151,6 +148,7 @@ export class LocalLlama extends ServiceMap.Service<LocalLlama>()("LocalLlama", {
             const response = yield* Effect.tryPromise({
               try: async () => {
                 const controller = new AbortController()
+                let session: LocalChatSession | undefined
                 const timeout = setTimeout(() => {
                   controller.abort(
                     new Error(`Local provider timed out after ${String(timeoutMs)}ms.`)
@@ -158,7 +156,13 @@ export class LocalLlama extends ServiceMap.Service<LocalLlama>()("LocalLlama", {
                 }, timeoutMs)
 
                 try {
-                  const completion = await loaded.completion.generateCompletion(prompt, {
+                  session = new module.LlamaChatSession({
+                    contextSequence: loaded.context.getSequence(),
+                    systemPrompt,
+                    autoDisposeSequence: true,
+                  })
+
+                  const completion = await session.prompt(prompt, {
                     maxTokens,
                     temperature: 0.1,
                     trimWhitespaceSuffix: true,
@@ -168,6 +172,7 @@ export class LocalLlama extends ServiceMap.Service<LocalLlama>()("LocalLlama", {
                   return typeof completion === "string" ? completion : String(completion)
                 } finally {
                   clearTimeout(timeout)
+                  session?.dispose()
                 }
               },
               catch: (cause) => resolveLocalGenerationError(cause),
