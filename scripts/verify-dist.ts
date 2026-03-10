@@ -1,14 +1,17 @@
+import { access } from "node:fs/promises"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { COMPILE_TARGETS } from "../src/app/version"
 
-const root = path.resolve(import.meta.dir, "..")
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const missing: string[] = []
 
 for (const target of COMPILE_TARGETS) {
   const outfile = path.join(root, target.output)
-  const exists = await Bun.file(outfile).exists()
-  if (!exists) {
+  try {
+    await access(outfile)
+  } catch {
     missing.push(target.output)
   }
 }

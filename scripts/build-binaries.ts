@@ -1,10 +1,11 @@
 import { spawnSync } from "node:child_process"
-import { mkdir } from "node:fs/promises"
+import { mkdir, rm } from "node:fs/promises"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { COMPILE_TARGETS } from "../src/app/version"
 
-const root = path.resolve(import.meta.dir, "..")
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const entrypoint = path.join(root, "src", "app", "main.ts")
 const forceAllTargets = process.argv.includes("--all")
 
@@ -18,6 +19,8 @@ const targets =
           .includes(t.bunTarget)
       )
     : [...COMPILE_TARGETS]
+
+await rm(path.join(root, ".dist"), { force: true, recursive: true })
 
 for (const target of targets) {
   const outfile = path.join(root, target.output)

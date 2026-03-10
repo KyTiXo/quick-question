@@ -256,7 +256,7 @@ describe("cli handlers + program", () => {
     expect(isHandledError(new Error("boom"))).toBe(false)
   })
 
-  it("delegates main execution to BunRuntime", () => {
+  it("delegates main execution to NodeRuntime", () => {
     const originalRunMain = runtimeOps.runMain
     runtimeOps.runMain = () => undefined as never
 

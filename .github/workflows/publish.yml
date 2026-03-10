@@ -67,32 +67,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build CLI binaries
-        run: bun run build:all
-
-      - name: Ensure CLI binaries are executable
-        run: find .dist -type f -exec chmod +x {} \;
-
-      - name: Verify dist artifacts
-        run: bun run scripts/verify-dist.ts
-
-      - name: Stage binaries for release
-        run: |
-          mkdir -p release-assets
-          cp .dist/bun-darwin-arm64/qq release-assets/qq-darwin-arm64
-          cp .dist/bun-darwin-x64/qq release-assets/qq-darwin-x64
-          cp .dist/bun-linux-arm64/qq release-assets/qq-linux-arm64
-          cp .dist/bun-linux-x64/qq release-assets/qq-linux-x64
-          cp .dist/bun-linux-x64-baseline/qq release-assets/qq-linux-x64-baseline
-          cp .dist/bun-linux-x64-modern/qq release-assets/qq-linux-x64-modern
-          cp .dist/bun-windows-x64/qq.exe release-assets/qq-windows-x64.exe
-          cp .dist/bun-windows-x64-baseline/qq.exe release-assets/qq-windows-x64-baseline.exe
-          cp .dist/bun-windows-x64-modern/qq.exe release-assets/qq-windows-x64-modern.exe
+      - name: Build npm package
+        run: bun run build
 
       - name: Build release body
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          REPO="${{ github.repository }}"
           {
             cat /tmp/cliff-notes.md
             echo ""
@@ -104,20 +83,6 @@ jobs:
             echo '```'
             echo "npm install -g quick-question-llm"
             echo '```'
-            echo ""
-            echo "### Direct Download (v${VERSION})"
-            echo ""
-            echo "| Platform | Arch | Binary |"
-            echo "|----------|------|--------|"
-            echo "| macOS | Apple Silicon | [qq-darwin-arm64](https://github.com/${REPO}/releases/download/v${VERSION}/qq-darwin-arm64) |"
-            echo "| macOS | Intel (x64) | [qq-darwin-x64](https://github.com/${REPO}/releases/download/v${VERSION}/qq-darwin-x64) |"
-            echo "| Linux | arm64 | [qq-linux-arm64](https://github.com/${REPO}/releases/download/v${VERSION}/qq-linux-arm64) |"
-            echo "| Linux | x64 | [qq-linux-x64](https://github.com/${REPO}/releases/download/v${VERSION}/qq-linux-x64) |"
-            echo "| Linux | x64 (baseline) | [qq-linux-x64-baseline](https://github.com/${REPO}/releases/download/v${VERSION}/qq-linux-x64-baseline) |"
-            echo "| Linux | x64 (modern) | [qq-linux-x64-modern](https://github.com/${REPO}/releases/download/v${VERSION}/qq-linux-x64-modern) |"
-            echo "| Windows | x64 | [qq-windows-x64.exe](https://github.com/${REPO}/releases/download/v${VERSION}/qq-windows-x64.exe) |"
-            echo "| Windows | x64 (baseline) | [qq-windows-x64-baseline.exe](https://github.com/${REPO}/releases/download/v${VERSION}/qq-windows-x64-baseline.exe) |"
-            echo "| Windows | x64 (modern) | [qq-windows-x64-modern.exe](https://github.com/${REPO}/releases/download/v${VERSION}/qq-windows-x64-modern.exe) |"
           } > /tmp/release-body.md
 
       - name: Publish to npm
@@ -138,15 +103,5 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.version }}
           body_path: /tmp/release-body.md
-          files: |
-            release-assets/qq-darwin-arm64
-            release-assets/qq-darwin-x64
-            release-assets/qq-linux-arm64
-            release-assets/qq-linux-x64
-            release-assets/qq-linux-x64-baseline
-            release-assets/qq-linux-x64-modern
-            release-assets/qq-windows-x64.exe
-            release-assets/qq-windows-x64-baseline.exe
-            release-assets/qq-windows-x64-modern.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

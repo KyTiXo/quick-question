@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { BunServices } from "@effect/platform-bun"
+import { NodeServices } from "@effect/platform-node"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { ConfigStore } from "@/services/config-store"
@@ -14,7 +14,7 @@ const tempDirs: Array<string> = []
 const makeStore = (env: Record<string, string | undefined>) =>
   Effect.runPromise(
     ConfigStore.make.pipe(
-      Effect.provide(Layer.mergeAll(BunServices.layer, captureRuntime({ env }).runtimeLayer))
+      Effect.provide(Layer.mergeAll(NodeServices.layer, captureRuntime({ env }).runtimeLayer))
     )
   )
 
@@ -126,7 +126,7 @@ describe("services/config-store", () => {
       }).pipe(
         Effect.provide(
           ConfigStore.Live.pipe(
-            Layer.provide(Layer.mergeAll(BunServices.layer, runtime.runtimeLayer))
+            Layer.provide(Layer.mergeAll(NodeServices.layer, runtime.runtimeLayer))
           )
         )
       )

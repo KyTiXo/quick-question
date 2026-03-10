@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
-import * as BunHttpClient from "@effect/platform-bun/BunHttpClient"
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { renderPrompt } from "@/domain/prompt"
@@ -122,11 +122,13 @@ describe("services/distill-engine", () => {
     const summarizer = summarizerFor(gateway, config)
 
     await expect(
-      Effect.runPromise(summarizer.summarizeBatch("diff").pipe(Effect.provide(BunHttpClient.layer)))
+      Effect.runPromise(
+        summarizer.summarizeBatch("diff").pipe(Effect.provide(NodeHttpClient.layerFetch))
+      )
     ).resolves.toContain("Command output:\ndiff")
     await expect(
       Effect.runPromise(
-        summarizer.summarizeWatch("before", "after").pipe(Effect.provide(BunHttpClient.layer))
+        summarizer.summarizeWatch("before", "after").pipe(Effect.provide(NodeHttpClient.layerFetch))
       )
     ).resolves.toContain("Previous cycle:\nbefore")
   })
@@ -138,7 +140,7 @@ describe("services/distill-engine", () => {
         runtime,
         modelGateway: makeModelGateway(() => Effect.succeed("summary")),
         config,
-      }).pipe(Effect.provide(BunHttpClient.layer))
+      }).pipe(Effect.provide(NodeHttpClient.layerFetch))
     )
 
     runtime.stdin.emit("data", Buffer.from("hello"))
@@ -156,7 +158,7 @@ describe("services/distill-engine", () => {
           runtime: ttyRuntime,
           modelGateway: makeModelGateway(() => Effect.succeed("summary")),
           config,
-        }).pipe(Effect.provide(BunHttpClient.layer))
+        }).pipe(Effect.provide(NodeHttpClient.layerFetch))
       )
     ).rejects.toBeInstanceOf(UsageError)
   })
@@ -176,7 +178,7 @@ describe("services/distill-engine", () => {
     )
 
     await expect(
-      Effect.runPromise(service.run(config).pipe(Effect.provide(BunHttpClient.layer)))
+      Effect.runPromise(service.run(config).pipe(Effect.provide(NodeHttpClient.layerFetch)))
     ).rejects.toBeInstanceOf(UsageError)
   })
 
@@ -195,7 +197,9 @@ describe("services/distill-engine", () => {
       )
     )
 
-    const promise = Effect.runPromise(service.run(config).pipe(Effect.provide(BunHttpClient.layer)))
+    const promise = Effect.runPromise(
+      service.run(config).pipe(Effect.provide(NodeHttpClient.layerFetch))
+    )
     runtime.stdin.emit("data", Buffer.from("raw input"))
     runtime.stdin.emit("end")
 

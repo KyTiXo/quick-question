@@ -21,8 +21,18 @@ Instead of dumping 2,000 lines of test output into your agent, you get 12 words.
 
 ```bash
 ollama pull qwen3.5:2b   # make sure ollama serve is running
+npx quick-question-llm --help
 npm install -g quick-question-llm
 ```
+
+Or with Bun:
+
+```bash
+bunx quick-question-llm --help
+```
+
+Standalone binaries are still buildable locally with `bun run build:all`, but they are not
+distributed by default. The primary install path is the npm package.
 
 ## Help
 

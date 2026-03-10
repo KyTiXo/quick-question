@@ -1,5 +1,5 @@
-import { BunRuntime, BunServices } from "@effect/platform-bun"
-import * as BunHttpClient from "@effect/platform-bun/BunHttpClient"
+import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import * as Cause from "effect/Cause"
 import type * as Config from "effect/Config"
 import * as Effect from "effect/Effect"
@@ -68,12 +68,12 @@ export const buildProgram = () =>
     Effect.sandbox,
     Effect.catchCause(handleDefect),
     Effect.provide(Live),
-    Effect.provide(BunHttpClient.layer),
-    Effect.provide(BunServices.layer)
+    Effect.provide(NodeHttpClient.layerFetch),
+    Effect.provide(NodeServices.layer)
   )
 
 export const runtimeOps = {
-  runMain: BunRuntime.runMain,
+  runMain: NodeRuntime.runMain,
 }
 
 export const runMain = () =>

@@ -5,11 +5,19 @@
     "type": "git",
     "url": "https://github.com/KyTiXo/quick-question"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "bin": {
-    "qq": "src/app/main.ts"
+    "qq": "dist/qq.js"
   },
-  "module": "index.ts",
+  "module": "dist/index.js",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "keywords": [
     "llm",
     "token",
@@ -22,15 +30,15 @@
   ],
   "scripts": {
     "dev": "bun run src/app/main.ts",
-    "build": "bun run scripts/build-binaries.ts",
+    "build": "bun run scripts/build-package.ts",
     "build:all": "bun run scripts/build-binaries.ts --all",
-    "prepare": "husky",
+    "prepare": "command -v husky >/dev/null && husky || true",
     "test": "bun test --max-concurrency=1",
     "test:live": "bun run scripts/test-live-smoke.ts",
     "test:explode": "bun run scripts/test-explode.ts",
     "typecheck": "tsc --noEmit",
     "check:all": "biome check --write . && tsc --noEmit && bun test --max-concurrency=1",
-    "check:all:qq": "bun run check:all 2>&1 | qq 'did the tests pass?'",
+    "check:all:qq": "bun run build >/dev/null && bun run check:all 2>&1 | node dist/qq.js 'did the tests pass?'",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "lint:ci": "biome ci .",
@@ -53,7 +61,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@effect/platform-bun": "^4.0.0-beta.29",
+    "@effect/platform-node": "^4.0.0-beta.29",
     "effect": "^4.0.0-beta.29"
   }
 }

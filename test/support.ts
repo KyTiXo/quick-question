@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events"
-import * as BunHttpClient from "@effect/platform-bun/BunHttpClient"
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Sink from "effect/Sink"
@@ -72,8 +72,8 @@ export const fetchLayer = (
   fetchImpl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 ) =>
   Layer.mergeAll(
-    BunHttpClient.layer,
-    Layer.succeed(BunHttpClient.Fetch)(((input: string | URL | Request, init?: RequestInit) =>
+    NodeHttpClient.layerFetch,
+    Layer.succeed(NodeHttpClient.Fetch)(((input: string | URL | Request, init?: RequestInit) =>
       fetchImpl(
         input instanceof Request
           ? input
