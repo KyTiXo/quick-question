@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { mkdir, rm } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -8,6 +9,9 @@ import { COMPILE_TARGETS } from "../src/app/version"
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const entrypoint = path.join(root, "src", "app", "main.ts")
 const forceAllTargets = process.argv.includes("--all")
+const packageJson = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+  dependencies?: Record<string, string>
+}
 
 const targetsEnv = process.env.QQ_TARGETS
 const targets =
@@ -21,6 +25,12 @@ const targets =
     : [...COMPILE_TARGETS]
 
 await rm(path.join(root, ".dist"), { force: true, recursive: true })
+
+if (packageJson.dependencies?.["node-llama-cpp"]) {
+  throw new Error(
+    "Standalone `bun build --compile` artifacts are not supported with the local `node-llama-cpp` provider. Use the npm/bun package install path instead."
+  )
+}
 
 for (const target of targets) {
   const outfile = path.join(root, target.output)

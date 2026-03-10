@@ -5,10 +5,11 @@ import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as ServiceMap from "effect/ServiceMap"
 import {
-  DEFAULT_MODEL,
+  DEFAULT_MAX_TOKENS,
   DEFAULT_PROVIDER,
   DEFAULT_TIMEOUT_MS,
   defaultHostFor,
+  defaultModelFor,
   envKeys,
   falsyValues,
   joinQuestion,
@@ -26,6 +27,10 @@ const EnvConfig = Config.all({
   model: Config.string(envKeys.model).pipe(Config.withDefault("")),
   host: Config.string(envKeys.host).pipe(Config.withDefault("")),
   timeoutMs: Config.string(envKeys.timeoutMs).pipe(Config.withDefault("")),
+  maxTokens: Config.string(envKeys.maxTokens).pipe(Config.withDefault("")),
+  localCompletionMaxTokens: Config.string(envKeys.localCompletionMaxTokens).pipe(
+    Config.withDefault("")
+  ),
   thinking: Config.string(envKeys.thinking).pipe(Config.withDefault("")),
   ollamaHost: Config.string(envKeys.ollamaHost).pipe(Config.withDefault("")),
   openAiBaseUrl: Config.string(envKeys.openAiBaseUrl).pipe(Config.withDefault("")),
@@ -43,11 +48,11 @@ const loadEnv = (env: Record<string, string | undefined>) =>
 
 const usageError = (detail: string) => new UsageError({ detail, exitCode: 2 })
 
-const parseProvider = (raw: string) => {
+const parseProvider = (raw: string): Option.Option<Provider> => {
   const value = raw.trim().toLowerCase()
 
-  if (value === "ollama" || value === "openai") {
-    return Option.some(value as Provider)
+  if (value === "ollama" || value === "openai" || value === "local") {
+    return Option.some(value)
   }
 
   return Option.none<Provider>()
@@ -77,9 +82,19 @@ const parseTimeout = (raw: string) => {
   return Option.some(Math.floor(value))
 }
 
-const parseProviderValue = (raw: string, label: string) =>
+const parseMaxTokens = (raw: string) => {
+  const value = Number(raw)
+
+  if (!Number.isFinite(value) || value <= 0) {
+    return Option.none<number>()
+  }
+
+  return Option.some(Math.floor(value))
+}
+
+const parseProviderValue = (raw: string, label: string): Effect.Effect<Provider, UsageError> =>
   Option.match(parseProvider(raw), {
-    onNone: () => Effect.fail(usageError(`${label} must be "ollama" or "openai".`)),
+    onNone: () => Effect.fail(usageError(`${label} must be "ollama", "openai", or "local".`)),
     onSome: Effect.succeed,
   })
 
@@ -92,6 +107,12 @@ const parseBooleanValue = (raw: string, label: string) =>
 const parseTimeoutValue = (raw: string) =>
   Option.match(parseTimeout(raw), {
     onNone: () => Effect.fail(usageError("Timeout must be a positive number.")),
+    onSome: Effect.succeed,
+  })
+
+const parseMaxTokensValue = (raw: string) =>
+  Option.match(parseMaxTokens(raw), {
+    onNone: () => Effect.fail(usageError("Max tokens must be a positive number.")),
     onSome: Effect.succeed,
   })
 
@@ -120,11 +141,16 @@ interface EnvValues {
   model: string
   host: string
   timeoutMs: string
+  maxTokens: string
+  localCompletionMaxTokens: string
   thinking: string
   ollamaHost: string
   openAiBaseUrl: string
   openAiApiKey: string
 }
+
+const persistedModelFor = (persisted: PersistedConfig, provider: Provider) =>
+  persisted.providerModels?.[provider] ?? persisted.model
 
 const pickString = (...values: Array<string | undefined>) => {
   for (const value of values) {
@@ -167,7 +193,9 @@ const resolveParsedString = <A>({
 const envHostForProvider = (env: EnvValues, provider: Provider) =>
   provider === "openai"
     ? pickString(env.openAiBaseUrl, env.host)
-    : pickString(env.ollamaHost, env.host)
+    : provider === "ollama"
+      ? pickString(env.ollamaHost, env.host)
+      : undefined
 
 const resolveProviderInput = ({
   cli,
@@ -186,10 +214,10 @@ const resolveProviderInput = ({
     parse: (raw) => parseProviderValue(raw, "Provider"),
   })
 
-const resolveModelInput = (...values: Array<string | undefined>) =>
+const resolveModelInput = (provider: Provider, ...values: Array<string | undefined>) =>
   resolveParsedString({
     values,
-    fallback: DEFAULT_MODEL,
+    fallback: defaultModelFor(provider),
     parse: parseModelValue,
   })
 
@@ -204,11 +232,13 @@ const resolveHostInput = ({
   env?: string
   persisted?: string
 }) =>
-  resolveParsedString({
-    values: [cli, env, persisted, defaultHostFor(provider)],
-    fallback: defaultHostFor(provider),
-    parse: parseHostValue,
-  })
+  provider === "local"
+    ? Effect.succeed("")
+    : resolveParsedString({
+        values: [cli, env, persisted, defaultHostFor(provider)],
+        fallback: defaultHostFor(provider),
+        parse: parseHostValue,
+      })
 
 const resolveTimeoutInput = ({
   cli,
@@ -225,6 +255,23 @@ const resolveTimeoutInput = ({
     persisted,
     fallback: DEFAULT_TIMEOUT_MS,
     parse: parseTimeoutValue,
+  })
+
+const resolveMaxTokensInput = ({
+  cli,
+  env,
+  persisted,
+}: {
+  cli?: string
+  env?: string
+  persisted?: number
+}) =>
+  resolveParsedInput({
+    cli,
+    env,
+    persisted,
+    fallback: DEFAULT_MAX_TOKENS,
+    parse: parseMaxTokensValue,
   })
 
 const resolveThinkingInput = ({
@@ -267,14 +314,17 @@ const makeDefaults = (env: EnvValues) =>
 
     return {
       provider,
-      model: yield* resolveModelInput(env.model),
+      model: yield* resolveModelInput(provider, env.model),
       host: yield* resolveHostInput({
         provider,
         env: envHostForProvider(env, provider),
       }),
-      apiKey: pickString(env.openAiApiKey) ?? "",
+      apiKey: provider === "local" ? "" : (pickString(env.openAiApiKey) ?? ""),
       timeoutMs: yield* resolveTimeoutInput({
         env: env.timeoutMs,
+      }),
+      maxTokens: yield* resolveMaxTokensInput({
+        env: pickString(env.maxTokens, env.localCompletionMaxTokens),
       }),
       thinking: yield* resolveThinkingInput({
         env: env.thinking,
@@ -291,16 +341,20 @@ const makeEffectiveConfig = ({ env, persisted }: { env: EnvValues; persisted: Pe
 
     return {
       provider,
-      model: yield* resolveModelInput(env.model, persisted.model),
+      model: yield* resolveModelInput(provider, env.model, persistedModelFor(persisted, provider)),
       host: yield* resolveHostInput({
         provider,
         env: envHostForProvider(env, provider),
         persisted: persisted.host,
       }),
-      apiKey: pickString(env.openAiApiKey, persisted.apiKey) ?? "",
+      apiKey: provider === "local" ? "" : (pickString(env.openAiApiKey, persisted.apiKey) ?? ""),
       timeoutMs: yield* resolveTimeoutInput({
         env: env.timeoutMs,
         persisted: persisted.timeoutMs,
+      }),
+      maxTokens: yield* resolveMaxTokensInput({
+        env: pickString(env.maxTokens, env.localCompletionMaxTokens),
+        persisted: persisted.maxTokens,
       }),
       thinking: yield* resolveThinkingInput({
         env: env.thinking,
@@ -324,14 +378,22 @@ const makeResolvedRunConfig = ({
       env: env.provider,
       persisted: persisted.provider,
     })
-    const apiKey = pickString(input.apiKey, env.openAiApiKey, persisted.apiKey) ?? ""
+    const apiKey =
+      provider === "local"
+        ? ""
+        : (pickString(input.apiKey, env.openAiApiKey, persisted.apiKey) ?? "")
 
     yield* requireOpenAiApiKey(provider, apiKey)
 
     return {
       question: yield* resolveQuestion(input.question),
       provider,
-      model: yield* resolveModelInput(input.model, env.model, persisted.model),
+      model: yield* resolveModelInput(
+        provider,
+        input.model,
+        env.model,
+        persistedModelFor(persisted, provider)
+      ),
       host: yield* resolveHostInput({
         provider,
         cli: input.host,
@@ -343,6 +405,11 @@ const makeResolvedRunConfig = ({
         cli: input.timeoutMs,
         env: env.timeoutMs,
         persisted: persisted.timeoutMs,
+      }),
+      maxTokens: yield* resolveMaxTokensInput({
+        cli: input.maxTokens,
+        env: pickString(env.maxTokens, env.localCompletionMaxTokens),
+        persisted: persisted.maxTokens,
       }),
       thinking: yield* resolveThinkingInput({
         cli: input.thinking,
@@ -359,6 +426,7 @@ export interface CliRunInput {
   host?: string
   apiKey?: string
   timeoutMs?: string
+  maxTokens?: string
   thinking?: string
 }
 
@@ -394,6 +462,8 @@ export class RuntimeConfig extends ServiceMap.Service<RuntimeConfig>()("RuntimeC
             return parseBooleanValue(raw, "Thinking")
           case "timeout-ms":
             return parseTimeoutValue(raw)
+          case "max-tokens":
+            return parseMaxTokensValue(raw)
           case "host":
             return parseHostValue(raw)
           case "model":

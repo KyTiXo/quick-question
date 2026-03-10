@@ -23,6 +23,7 @@ export const handleRun = (input: {
   host: Option.Option<string>
   apiKey: Option.Option<string>
   timeoutMs: Option.Option<string>
+  maxTokens: Option.Option<string>
   thinking: Option.Option<string>
 }) =>
   Effect.gen(function* () {
@@ -36,6 +37,7 @@ export const handleRun = (input: {
       host: optionToUndefined(input.host),
       apiKey: optionToUndefined(input.apiKey),
       timeoutMs: optionToUndefined(input.timeoutMs),
+      maxTokens: optionToUndefined(input.maxTokens),
       thinking: optionToUndefined(input.thinking),
     } satisfies CliRunInput)
 
@@ -50,6 +52,7 @@ const effectiveConfigLines = (
     host: string
     apiKey: string
     timeoutMs: number
+    maxTokens: number
     thinking: boolean
   }
 ) => [
@@ -59,8 +62,69 @@ const effectiveConfigLines = (
   `host=${effective.host}`,
   `api-key=${maskSecret(effective.apiKey)}`,
   `timeout-ms=${String(effective.timeoutMs)}`,
+  `max-tokens=${String(effective.maxTokens)}`,
   `thinking=${String(effective.thinking)}`,
 ]
+
+const decodeKey = (keyInput: string) =>
+  decodeConfigKey(keyInput).pipe(
+    Effect.mapError(
+      () =>
+        new UsageError({
+          detail: `Unknown config key: ${keyInput}`,
+          exitCode: 2,
+        })
+    )
+  )
+
+const showEffectiveConfig = (
+  configStore: typeof ConfigStore.Service,
+  runtimeConfig: typeof RuntimeConfig.Service
+) =>
+  Effect.gen(function* () {
+    const configPath = yield* configStore.resolvePath()
+    const effective = yield* runtimeConfig.getEffectiveConfig()
+    yield* writeLine(effectiveConfigLines(configPath, effective).join("\n"))
+  })
+
+const showConfigValue = (
+  key: keyof typeof configFieldByKey,
+  runtimeConfig: typeof RuntimeConfig.Service
+) =>
+  Effect.gen(function* () {
+    const effective = yield* runtimeConfig.getEffectiveConfig()
+    const field = configFieldByKey[key]
+    const raw = effective[field]
+    const value = key === "api-key" && typeof raw === "string" ? maskSecret(raw) : String(raw)
+    yield* writeLine(value)
+  })
+
+const persistConfigValue = ({
+  key,
+  value,
+  configStore,
+  runtimeConfig,
+}: {
+  key: keyof typeof configFieldByKey
+  value: string | number | boolean
+  configStore: typeof ConfigStore.Service
+  runtimeConfig: typeof RuntimeConfig.Service
+}) =>
+  Effect.gen(function* () {
+    if (key === "model" && typeof value === "string") {
+      const effective = yield* runtimeConfig.getEffectiveConfig()
+      yield* configStore.setProviderModel(effective.provider, value)
+    } else {
+      if (key === "provider") {
+        const effective = yield* runtimeConfig.getEffectiveConfig()
+        yield* configStore.setProviderModel(effective.provider, effective.model)
+      }
+
+      yield* configStore.set(key, value)
+    }
+
+    yield* writeLine(`${key}=${String(value)}`)
+  })
 
 export const handleConfig = (input: { key: Option.Option<string>; value: ReadonlyArray<string> }) =>
   Effect.gen(function* () {
@@ -69,29 +133,14 @@ export const handleConfig = (input: { key: Option.Option<string>; value: Readonl
     const keyInput = optionToUndefined(input.key)
 
     if (keyInput === undefined) {
-      const configPath = yield* configStore.resolvePath()
-      const effective = yield* runtimeConfig.getEffectiveConfig()
-      const lines = effectiveConfigLines(configPath, effective)
-      yield* writeLine(lines.join("\n"))
+      yield* showEffectiveConfig(configStore, runtimeConfig)
       return
     }
 
-    const key = yield* decodeConfigKey(keyInput).pipe(
-      Effect.mapError(
-        () =>
-          new UsageError({
-            detail: `Unknown config key: ${keyInput}`,
-            exitCode: 2,
-          })
-      )
-    )
+    const key = yield* decodeKey(keyInput)
 
     if (input.value.length === 0) {
-      const effective = yield* runtimeConfig.getEffectiveConfig()
-      const field = configFieldByKey[key]
-      const raw = effective[field]
-      const value = key === "api-key" && typeof raw === "string" ? maskSecret(raw) : String(raw)
-      yield* writeLine(value)
+      yield* showConfigValue(key, runtimeConfig)
       return
     }
 
@@ -107,6 +156,5 @@ export const handleConfig = (input: { key: Option.Option<string>; value: Readonl
     }
 
     const value = yield* runtimeConfig.parseConfigValue(key, rawValue)
-    yield* configStore.set(key, value)
-    yield* writeLine(`${key}=${String(value)}`)
+    yield* persistConfigValue({ key, value, configStore, runtimeConfig })
   })

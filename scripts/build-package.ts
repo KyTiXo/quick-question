@@ -4,12 +4,23 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+const externalModules = ["node-llama-cpp"]
 
 const runBuild = (entrypoint: string, outfile: string) => {
-  const result = spawnSync("bun", ["build", "--target=node", `--outfile=${outfile}`, entrypoint], {
-    cwd: root,
-    stdio: "inherit",
-  })
+  const result = spawnSync(
+    "bun",
+    [
+      "build",
+      "--target=node",
+      ...externalModules.flatMap((moduleName) => ["--external", moduleName]),
+      `--outfile=${outfile}`,
+      entrypoint,
+    ],
+    {
+      cwd: root,
+      stdio: "inherit",
+    }
+  )
 
   if (result.status !== 0) {
     throw new Error(`Failed to build ${path.relative(root, entrypoint)}.`)

@@ -33,7 +33,7 @@ export const progressOptions = (runtime: RuntimeLike) => {
 }
 
 export const readIntoSession = <E, R>(stdin: RuntimeInput, session: StreamSession<E, R>) =>
-  Effect.callback<void, unknown>((resume) => {
+  Effect.callback<undefined, unknown>((resume) => {
     const cleanup = () => {
       stdin.off?.("data", onData)
       stdin.off?.("end", onEnd)
@@ -44,7 +44,7 @@ export const readIntoSession = <E, R>(stdin: RuntimeInput, session: StreamSessio
     }
     const onEnd = () => {
       cleanup()
-      resume(Effect.void)
+      resume(Effect.succeed(undefined))
     }
     const onError = (error: unknown) => {
       cleanup()

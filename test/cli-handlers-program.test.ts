@@ -18,7 +18,7 @@ import { ConfigStore } from "@/services/config-store"
 import { DistillEngine } from "@/services/distill-engine"
 import { RuntimeConfig } from "@/services/runtime-config"
 
-import { captureRuntime } from "./support"
+import { captureRuntime, getEffectError } from "./support"
 
 const withLayers = <A, E, R, First, Rest extends ReadonlyArray<unknown>>(
   effect: Effect.Effect<A, E, R>,
@@ -44,6 +44,7 @@ describe("cli handlers + program", () => {
           host: "http://host",
           apiKey: "",
           timeoutMs: 1,
+          maxTokens: 200,
           thinking: false,
         })
       },
@@ -64,6 +65,7 @@ describe("cli handlers + program", () => {
           host: Option.some("http://host"),
           apiKey: Option.some("key"),
           timeoutMs: Option.none(),
+          maxTokens: Option.some("200"),
           thinking: Option.some("true"),
         }),
         runtimeConfigLayer,
@@ -78,6 +80,7 @@ describe("cli handlers + program", () => {
       host: "http://host",
       apiKey: "key",
       timeoutMs: undefined,
+      maxTokens: "200",
       thinking: "true",
     })
     expect(config).toEqual({
@@ -87,6 +90,7 @@ describe("cli handlers + program", () => {
       host: "http://host",
       apiKey: "",
       timeoutMs: 1,
+      maxTokens: 200,
       thinking: false,
     })
   })
@@ -99,6 +103,7 @@ describe("cli handlers + program", () => {
       host: "http://127.0.0.1:11434",
       apiKey: "",
       timeoutMs: 90_000,
+      maxTokens: 200,
       thinking: false,
     }
     const configStoreLayer = Layer.succeed(ConfigStore)({
@@ -106,6 +111,7 @@ describe("cli handlers + program", () => {
       read: () => Effect.succeed({}),
       showLines: () => Effect.die(new Error("unused")),
       get: () => Effect.succeed("qwen"),
+      setProviderModel: () => Effect.void,
       set: () => Effect.void,
     } satisfies typeof ConfigStore.Service)
     const runtimeConfigLayer = Layer.succeed(RuntimeConfig)({
@@ -148,33 +154,139 @@ describe("cli handlers + program", () => {
         "host=http://127.0.0.1:11434",
         "api-key=",
         "timeout-ms=90000",
+        "max-tokens=200",
         "thinking=false",
         "qwen",
         "model=QWEN 3",
       ].join("\n")}\n`
     )
 
-    await expect(
-      Effect.runPromise(
-        withLayers(
-          handleConfig({ key: Option.some("unknown"), value: [] }),
-          runtime.layer,
-          configStoreLayer,
-          runtimeConfigLayer
-        )
+    const unknownConfigError = await getEffectError(
+      withLayers(
+        handleConfig({ key: Option.some("unknown"), value: [] }),
+        runtime.layer,
+        configStoreLayer,
+        runtimeConfigLayer
       )
-    ).rejects.toThrow("Unknown config key: unknown")
+    )
+    expect((unknownConfigError as Error).message).toBe("Unknown config key: unknown")
 
-    await expect(
-      Effect.runPromise(
-        withLayers(
-          handleConfig({ key: Option.some("model"), value: ["   "] }),
-          runtime.layer,
-          configStoreLayer,
-          runtimeConfigLayer
-        )
+    const missingValueError = await getEffectError(
+      withLayers(
+        handleConfig({ key: Option.some("model"), value: ["   "] }),
+        runtime.layer,
+        configStoreLayer,
+        runtimeConfigLayer
       )
-    ).rejects.toThrow("Missing value for config key model.")
+    )
+    expect((missingValueError as Error).message).toBe("Missing value for config key model.")
+  })
+
+  it("shows blank host and api-key for effective local config", async () => {
+    const runtime = captureRuntime()
+    const configStoreLayer = Layer.succeed(ConfigStore)({
+      resolvePath: () => Effect.succeed("/tmp/config.json"),
+      read: () => Effect.succeed({}),
+      showLines: () => Effect.die(new Error("unused")),
+      get: () => Effect.die(new Error("unused")),
+      setProviderModel: () => Effect.void,
+      set: () => Effect.void,
+    } satisfies typeof ConfigStore.Service)
+    const runtimeConfigLayer = Layer.succeed(RuntimeConfig)({
+      defaults: () => Effect.die(new Error("unused")),
+      getEffectiveConfig: () =>
+        Effect.succeed({
+          provider: "local" as const,
+          model: "hf:unsloth/Qwen3.5-2B-GGUF/Qwen3.5-2B-Q4_K_M.gguf",
+          host: "",
+          apiKey: "",
+          timeoutMs: 90_000,
+          maxTokens: 200,
+          thinking: false,
+        }),
+      parseConfigValue: () => Effect.die(new Error("unused")),
+      resolveRunConfig: () => Effect.die(new Error("unused")),
+    } satisfies typeof RuntimeConfig.Service)
+
+    await Effect.runPromise(
+      withLayers(
+        handleConfig({ key: Option.none(), value: [] }),
+        runtime.layer,
+        configStoreLayer,
+        runtimeConfigLayer
+      )
+    )
+
+    expect(runtime.stdout.chunks.join("")).toBe(
+      `${[
+        "path=/tmp/config.json",
+        "provider=local",
+        "model=hf:unsloth/Qwen3.5-2B-GGUF/Qwen3.5-2B-Q4_K_M.gguf",
+        "host=",
+        "api-key=",
+        "timeout-ms=90000",
+        "max-tokens=200",
+        "thinking=false",
+      ].join("\n")}\n`
+    )
+  })
+
+  it("tracks model writes per provider and snapshots before provider switches", async () => {
+    const runtime = captureRuntime()
+    const calls: Array<readonly [string, string, string]> = []
+    const configStoreLayer = Layer.succeed(ConfigStore)({
+      resolvePath: () => Effect.succeed("/tmp/config.json"),
+      read: () => Effect.succeed({}),
+      showLines: () => Effect.die(new Error("unused")),
+      get: () => Effect.die(new Error("unused")),
+      setProviderModel: (provider: string, model: string) => {
+        calls.push(["setProviderModel", provider, model])
+        return Effect.void
+      },
+      set: (key: string, value: string | number | boolean) => {
+        calls.push(["set", key, String(value)])
+        return Effect.void
+      },
+    } satisfies typeof ConfigStore.Service)
+    const runtimeConfigLayer = Layer.succeed(RuntimeConfig)({
+      defaults: () => Effect.die(new Error("unused")),
+      getEffectiveConfig: () =>
+        Effect.succeed({
+          provider: "ollama" as const,
+          model: "qwen3.5:2b",
+          host: "http://127.0.0.1:11434",
+          apiKey: "",
+          timeoutMs: 90_000,
+          maxTokens: 200,
+          thinking: false,
+        }),
+      parseConfigValue: (key: string, raw: string) =>
+        Effect.succeed(key === "provider" ? raw.toLowerCase() : raw),
+      resolveRunConfig: () => Effect.die(new Error("unused")),
+    } satisfies typeof RuntimeConfig.Service)
+
+    await Effect.runPromise(
+      withLayers(
+        handleConfig({ key: Option.some("model"), value: ["hf:model.gguf"] }),
+        runtime.layer,
+        configStoreLayer,
+        runtimeConfigLayer
+      )
+    )
+    await Effect.runPromise(
+      withLayers(
+        handleConfig({ key: Option.some("provider"), value: ["local"] }),
+        runtime.layer,
+        configStoreLayer,
+        runtimeConfigLayer
+      )
+    )
+
+    expect(calls).toEqual([
+      ["setProviderModel", "ollama", "hf:model.gguf"],
+      ["setProviderModel", "ollama", "qwen3.5:2b"],
+      ["set", "provider", "local"],
+    ])
   })
 
   it("maps program errors to exit codes and stderr", async () => {

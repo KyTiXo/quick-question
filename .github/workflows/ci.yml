@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "test/**"
+      - "package.json"
+      - "bun.lock"
+      - "bunfig.toml"
+      - "tsconfig.json"
+      - ".prettierrc"
+      - ".editorconfig"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.7"
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run tests
+        run: bun test --max-concurrency=1 2>&1 | tee test-output.txt
+
+      - name: Lint and typecheck
+        run: bun run check:all
+
+      - name: Build CLI
+        run: bun run build:all
+
+      - name: Parse test results
+        if: github.ref == 'refs/heads/main'
+        id: results
+        run: |
+          PASS=$(grep -oE '[0-9]+ pass' test-output.txt | grep -oE '[0-9]+')
+          FAIL=$(grep -oE '[0-9]+ fail' test-output.txt | grep -oE '[0-9]+')
+          COVERAGE=$(grep 'All files' test-output.txt | awk -F'|' '{gsub(/[ \t]/, "", $3); print $3}')
+
+          COV_INT=${COVERAGE%.*}
+          if [ "$COV_INT" -ge 90 ]; then COV_COLOR="brightgreen"
+          elif [ "$COV_INT" -ge 80 ]; then COV_COLOR="green"
+          elif [ "$COV_INT" -ge 70 ]; then COV_COLOR="yellow"
+          else COV_COLOR="red"; fi
+
+          if [ "$FAIL" = "0" ]; then
+            TEST_COLOR="brightgreen"
+            TEST_MSG="${PASS} passed"
+          else
+            TEST_COLOR="red"
+            TEST_MSG="${FAIL} failed"
+          fi
+
+          mkdir -p badges
+
+          cat > badges/qq-tests.json <<EOF
+          { "schemaVersion": 1, "label": "tests", "message": "${TEST_MSG}", "color": "${TEST_COLOR}" }
+          EOF
+
+          cat > badges/qq-coverage.json <<EOF
+          { "schemaVersion": 1, "label": "coverage", "message": "${COVERAGE}%", "color": "${COV_COLOR}" }
+          EOF
+
+      - name: Publish badges
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd badges
+          git init -b badges
+          git add .
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "update badges"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" badges
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

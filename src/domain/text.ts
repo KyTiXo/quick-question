@@ -1,6 +1,5 @@
-const ANSI_PATTERN =
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: copied terminal stripping pattern
-  /\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g
+// biome-ignore lint/complexity/useRegexLiterals: constructor avoids eslint no-control-regex
+const ANSI_PATTERN = new RegExp(String.raw`\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])`, "g")
 
 const PROMPT_PATTERN =
   /(?:\[[Yy]\/[Nn]\]|\[[Nn]\/[Yy]\]|\([Yy]\/[Nn]\)|\([Nn]\/[Yy]\)|password:|passphrase:|continue\?|proceed\?)\s*$/i

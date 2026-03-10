@@ -262,11 +262,11 @@ export class StreamSession<E = unknown, R = never> {
       return
     }
 
-    const frame = PROGRESS_FRAMES[this.progressFrameIndex % PROGRESS_FRAMES.length]
+    const frame = PROGRESS_FRAMES[this.progressFrameIndex % PROGRESS_FRAMES.length] ?? "-"
     const dots =
       PROGRESS_DOT_FRAMES[
         Math.floor(this.progressFrameIndex / PROGRESS_FRAMES.length) % PROGRESS_DOT_FRAMES.length
-      ]
+      ] ?? ""
 
     this.progressFrameIndex += 1
     this.lastProgressRenderAt = Date.now()
@@ -351,7 +351,7 @@ export class StreamSession<E = unknown, R = never> {
       return
     }
 
-    const key = `${pair.previous.id}:${pair.current.id}`
+    const key = `${String(pair.previous.id)}:${String(pair.current.id)}`
 
     if (this.renderedPairs.has(key)) {
       return

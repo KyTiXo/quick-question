@@ -3,15 +3,22 @@ import { handleConfig, handleRun } from "@/cli/handlers"
 
 const sharedFlags = {
   provider: Flag.optional(
-    Flag.string("provider").pipe(Flag.withDescription("LLM provider: ollama or openai"))
+    Flag.string("provider").pipe(Flag.withDescription("LLM provider: ollama, openai, or local"))
   ),
   model: Flag.optional(Flag.string("model").pipe(Flag.withDescription("Model name"))),
-  host: Flag.optional(Flag.string("host").pipe(Flag.withDescription("API base URL"))),
+  host: Flag.optional(
+    Flag.string("host").pipe(Flag.withDescription("API base URL (ignored for local)"))
+  ),
   apiKey: Flag.optional(
-    Flag.string("api-key").pipe(Flag.withDescription("API key for openai provider"))
+    Flag.string("api-key").pipe(
+      Flag.withDescription("API key for openai provider (ignored for local)")
+    )
   ),
   timeoutMs: Flag.optional(
     Flag.string("timeout-ms").pipe(Flag.withDescription("Request timeout in milliseconds"))
+  ),
+  maxTokens: Flag.optional(
+    Flag.string("max-tokens").pipe(Flag.withDescription("Maximum tokens to generate"))
   ),
   thinking: Flag.optional(
     Flag.string("thinking").pipe(Flag.withDescription("Enable or disable model thinking"))
@@ -30,6 +37,7 @@ const configCommand = Command.make("config", {
   Command.withDescription("Show, get, or set persisted qq config."),
   Command.withExamples([
     { command: 'qq config model "qwen3.5:2b"' },
+    { command: "qq config max-tokens 400" },
     { command: "qq config thinking false" },
     { command: "qq config" },
   ]),

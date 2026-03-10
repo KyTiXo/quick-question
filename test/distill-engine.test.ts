@@ -15,9 +15,9 @@ import {
 } from "@/services/distill-engine"
 import { ModelGateway } from "@/services/model-gateway"
 
-import { captureRuntime, makeWriter, TestInput } from "./support"
+import { captureRuntime, getEffectError, makeWriter, TestInput } from "./support"
 
-interface TestWriter extends ReturnType<typeof makeWriter> {}
+type TestWriter = ReturnType<typeof makeWriter>
 interface TestRuntime extends RuntimeLike {
   stdin: TestInput
   stdout: TestWriter
@@ -45,6 +45,7 @@ const config = {
   host: "http://localhost:11434",
   apiKey: "",
   timeoutMs: 100,
+  maxTokens: 200,
   thinking: false,
 }
 
@@ -114,23 +115,31 @@ describe("services/distill-engine", () => {
       } as unknown as StreamSession)
     )
     failingInput.emit("error", new Error("broken pipe"))
-    await expect(failingPromise).rejects.toThrow("broken pipe")
+    let error: unknown
+
+    try {
+      await failingPromise
+    } catch (cause) {
+      error = cause
+    }
+
+    expect((error as Error).message).toBe("broken pipe")
   })
 
   it("builds prompt-aware summarizer functions", async () => {
     const gateway = makeModelGateway(({ prompt }) => Effect.succeed(renderPrompt(prompt)))
     const summarizer = summarizerFor(gateway, config)
 
-    await expect(
-      Effect.runPromise(
+    expect(
+      await Effect.runPromise(
         summarizer.summarizeBatch("diff").pipe(Effect.provide(NodeHttpClient.layerFetch))
       )
-    ).resolves.toContain("Command output:\ndiff")
-    await expect(
-      Effect.runPromise(
+    ).toContain("Command output:\ndiff")
+    expect(
+      await Effect.runPromise(
         summarizer.summarizeWatch("before", "after").pipe(Effect.provide(NodeHttpClient.layerFetch))
       )
-    ).resolves.toContain("Previous cycle:\nbefore")
+    ).toContain("Previous cycle:\nbefore")
   })
 
   it("runs a full batch session and rejects tty stdin", async () => {
@@ -152,15 +161,15 @@ describe("services/distill-engine", () => {
     const ttyRuntime = makeRuntime()
     ttyRuntime.stdin.isTTY = true
 
-    await expect(
-      Effect.runPromise(
+    expect(
+      await getEffectError(
         runSession({
           runtime: ttyRuntime,
           modelGateway: makeModelGateway(() => Effect.succeed("summary")),
           config,
         }).pipe(Effect.provide(NodeHttpClient.layerFetch))
       )
-    ).rejects.toBeInstanceOf(UsageError)
+    ).toBeInstanceOf(UsageError)
   })
 
   it("builds the live service and preserves usage errors", async () => {
@@ -177,9 +186,9 @@ describe("services/distill-engine", () => {
       )
     )
 
-    await expect(
-      Effect.runPromise(service.run(config).pipe(Effect.provide(NodeHttpClient.layerFetch)))
-    ).rejects.toBeInstanceOf(UsageError)
+    expect(
+      await getEffectError(service.run(config).pipe(Effect.provide(NodeHttpClient.layerFetch)))
+    ).toBeInstanceOf(UsageError)
   })
 
   it("wraps unexpected failures in DistillError and falls back to raw stdout", async () => {
@@ -203,7 +212,15 @@ describe("services/distill-engine", () => {
     runtime.stdin.emit("data", Buffer.from("raw input"))
     runtime.stdin.emit("end")
 
-    await expect(promise).rejects.toBeInstanceOf(DistillError)
+    let error: unknown
+
+    try {
+      await promise
+    } catch (cause) {
+      error = cause
+    }
+
+    expect(error).toBeInstanceOf(DistillError)
     expect(runtime.stdout.chunks.join("")).toBe("raw input")
   })
 

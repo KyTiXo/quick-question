@@ -3,9 +3,20 @@ import * as FileSystem from "effect/FileSystem"
 import * as Layer from "effect/Layer"
 import * as Path from "effect/Path"
 import * as ServiceMap from "effect/ServiceMap"
-import { configFieldByKey, envKeys, maskSecret, trimToUndefined } from "@/domain/config"
+import {
+  configFieldByKey,
+  DEFAULT_PROVIDER,
+  envKeys,
+  maskSecret,
+  trimToUndefined,
+} from "@/domain/config"
 import { AppRuntime } from "@/platform/runtime"
-import { decodePersistedConfigJson, encodePersistedConfigJson } from "@/schema/config"
+import {
+  decodePersistedConfigJson,
+  encodePersistedConfigJson,
+  type PersistedConfig,
+  type Provider,
+} from "@/schema/config"
 import { ConfigStoreError } from "@/schema/errors"
 
 const configPathForEnv = (path: Path.Path, env: Record<string, string | undefined>) => {
@@ -35,6 +46,11 @@ const configPathForEnv = (path: Path.Path, env: Record<string, string | undefine
 }
 
 const mapFsError = (detail: string) => (cause: unknown) => new ConfigStoreError({ detail, cause })
+
+const persistedModelFor = (
+  config: PersistedConfig,
+  provider = config.provider ?? DEFAULT_PROVIDER
+) => config.providerModels?.[provider] ?? config.model
 
 export class ConfigStore extends ServiceMap.Service<ConfigStore>()("ConfigStore", {
   make: Effect.gen(function* () {
@@ -97,7 +113,23 @@ export class ConfigStore extends ServiceMap.Service<ConfigStore>()("ConfigStore"
       resolvePath: () => resolvePath,
       read: () => read,
       get: (key: keyof typeof configFieldByKey) =>
-        read.pipe(Effect.map((config) => config[configFieldByKey[key]])),
+        key === "model"
+          ? read.pipe(Effect.map((config) => persistedModelFor(config)))
+          : read.pipe(Effect.map((config) => config[configFieldByKey[key]])),
+      setProviderModel: (provider: Provider, model: string) =>
+        Effect.gen(function* () {
+          const current = yield* read
+          const next = {
+            ...current,
+            model,
+            providerModels: {
+              ...current.providerModels,
+              [provider]: model,
+            },
+          } satisfies PersistedConfig
+
+          yield* write(next)
+        }),
       set: (key: keyof typeof configFieldByKey, value: string | number | boolean) =>
         Effect.gen(function* () {
           const current = yield* read
@@ -117,11 +149,12 @@ export class ConfigStore extends ServiceMap.Service<ConfigStore>()("ConfigStore"
           return [
             `path=${configPath}`,
             `provider=${config.provider ?? ""}`,
-            `model=${config.model ?? ""}`,
+            `model=${persistedModelFor(config, config.provider) ?? ""}`,
             `host=${config.host ?? ""}`,
             `api-key=${maskSecret(config.apiKey ?? "")}`,
-            `timeout-ms=${config.timeoutMs ?? ""}`,
-            `thinking=${config.thinking ?? ""}`,
+            `timeout-ms=${String(config.timeoutMs ?? "")}`,
+            `max-tokens=${String(config.maxTokens ?? "")}`,
+            `thinking=${String(config.thinking ?? "")}`,
           ]
         }),
     }

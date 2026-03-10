@@ -30,6 +30,16 @@ export class TestInput extends EventEmitter implements RuntimeInput {
   }
 }
 
+export const getEffectError = async <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+  try {
+    await Effect.runPromise(effect as Effect.Effect<A, E>)
+  } catch (error) {
+    return error
+  }
+
+  throw new Error("Expected Effect to fail.")
+}
+
 export const captureRuntime = ({
   env = {},
   stdin = new TestInput(),
@@ -69,14 +79,16 @@ export const captureRuntime = ({
 }
 
 export const fetchLayer = (
-  fetchImpl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+  fetchImpl: (input: string | URL | Request, init?: RequestInit) => Response | Promise<Response>
 ) =>
   Layer.mergeAll(
     NodeHttpClient.layerFetch,
     Layer.succeed(NodeHttpClient.Fetch)(((input: string | URL | Request, init?: RequestInit) =>
-      fetchImpl(
-        input instanceof Request
-          ? input
-          : new Request(typeof input === "string" ? input : input.toString(), init)
+      Promise.resolve(
+        fetchImpl(
+          input instanceof Request
+            ? input
+            : new Request(typeof input === "string" ? input : input.toString(), init)
+        )
       )) as typeof fetch)
   )

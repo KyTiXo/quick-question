@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { ConfigStore } from "@/services/config-store"
 
-import { captureRuntime } from "./support"
+import { captureRuntime, getEffectError } from "./support"
 
 const tempDirs: Array<string> = []
 
@@ -44,6 +44,7 @@ describe("services/config-store", () => {
     await Effect.runPromise(store.set("model", "qwen"))
     await Effect.runPromise(store.set("api-key", "secret"))
     await Effect.runPromise(store.set("timeout-ms", 123))
+    await Effect.runPromise(store.set("max-tokens", 456))
 
     expect(await Effect.runPromise(store.get("model"))).toBe("qwen")
     expect(await readFile(configPath, "utf8")).toContain('"model":"qwen"')
@@ -54,6 +55,7 @@ describe("services/config-store", () => {
       "host=",
       "api-key=***",
       "timeout-ms=123",
+      "max-tokens=456",
       "thinking=",
     ])
   })
@@ -83,12 +85,36 @@ describe("services/config-store", () => {
     )
   })
 
+  it("persists models per provider while keeping legacy model compatibility", async () => {
+    const directory = await makeTempDir()
+    const configPath = path.join(directory, "config.json")
+    const store = await makeStore({
+      QQ_CONFIG_PATH: configPath,
+    })
+
+    await Effect.runPromise(store.set("provider", "ollama"))
+    await Effect.runPromise(store.setProviderModel("ollama", "qwen3.5:2b"))
+    await Effect.runPromise(store.set("provider", "local"))
+    await Effect.runPromise(
+      store.setProviderModel("local", "hf:unsloth/Qwen3.5-2B-GGUF/Qwen3.5-2B-Q4_K_M.gguf")
+    )
+
+    expect(await Effect.runPromise(store.get("model"))).toBe(
+      "hf:unsloth/Qwen3.5-2B-GGUF/Qwen3.5-2B-Q4_K_M.gguf"
+    )
+    expect(await readFile(configPath, "utf8")).toContain('"providerModels"')
+    expect(await readFile(configPath, "utf8")).toContain('"ollama":"qwen3.5:2b"')
+    expect(await readFile(configPath, "utf8")).toContain(
+      '"local":"hf:unsloth/Qwen3.5-2B-GGUF/Qwen3.5-2B-Q4_K_M.gguf"'
+    )
+  })
+
   it("fails when it cannot resolve a home directory", async () => {
     const store = await makeStore({})
 
-    await expect(Effect.runPromise(store.resolvePath())).rejects.toThrow(
-      "Could not resolve a home directory for qq config."
-    )
+    const error = await getEffectError(store.resolvePath())
+
+    expect((error as Error).message).toBe("Could not resolve a home directory for qq config.")
   })
 
   it("rejects invalid config json", async () => {
@@ -99,7 +125,9 @@ describe("services/config-store", () => {
       QQ_CONFIG_PATH: configPath,
     })
 
-    await expect(Effect.runPromise(store.read())).rejects.toThrow("qq config file is invalid JSON.")
+    const error = await getEffectError(store.read())
+
+    expect((error as Error).message).toBe("qq config file is invalid JSON.")
   })
 
   it("rejects values that cannot be encoded", async () => {
@@ -109,9 +137,9 @@ describe("services/config-store", () => {
       QQ_CONFIG_PATH: configPath,
     })
 
-    await expect(
-      Effect.runPromise(store.set("model", Symbol("bad") as unknown as string))
-    ).rejects.toThrow("Failed encoding qq config.")
+    const error = await getEffectError(store.set("model", Symbol("bad") as unknown as string))
+
+    expect((error as Error).message).toBe("Failed encoding qq config.")
   })
 
   it("exposes the live config-store layer", async () => {

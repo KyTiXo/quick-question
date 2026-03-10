@@ -55,7 +55,7 @@ export const requestJson = <S extends Schema.Top>({
       Effect.timeoutOrElse({
         duration: timeoutMs,
         onTimeout: () =>
-          Effect.fail(requestFailure(new Error(`Request timed out after ${timeoutMs}ms.`))),
+          Effect.fail(requestFailure(new Error(`Request timed out after ${String(timeoutMs)}ms.`))),
       }),
       Effect.mapError(requestFailure)
     )
