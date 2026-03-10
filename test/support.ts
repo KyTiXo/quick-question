@@ -70,4 +70,13 @@ export const captureRuntime = ({
 
 export const fetchLayer = (
   fetchImpl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
-) => Layer.succeed(BunHttpClient.Fetch)(fetchImpl as unknown as typeof fetch)
+) =>
+  Layer.mergeAll(
+    BunHttpClient.layer,
+    Layer.succeed(BunHttpClient.Fetch)(((input: string | URL | Request, init?: RequestInit) =>
+      fetchImpl(
+        input instanceof Request
+          ? input
+          : new Request(typeof input === "string" ? input : input.toString(), init)
+      )) as typeof fetch)
+  )

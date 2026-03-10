@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
+import * as BunHttpClient from "@effect/platform-bun/BunHttpClient"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { renderPrompt } from "@/domain/prompt"
@@ -120,10 +121,14 @@ describe("services/distill-engine", () => {
     const gateway = makeModelGateway(({ prompt }) => Effect.succeed(renderPrompt(prompt)))
     const summarizer = summarizerFor(gateway, config)
 
-    await expect(summarizer.summarizeBatch("diff")).resolves.toContain("Command output:\ndiff")
-    await expect(summarizer.summarizeWatch("before", "after")).resolves.toContain(
-      "Previous cycle:\nbefore"
-    )
+    await expect(
+      Effect.runPromise(summarizer.summarizeBatch("diff").pipe(Effect.provide(BunHttpClient.layer)))
+    ).resolves.toContain("Command output:\ndiff")
+    await expect(
+      Effect.runPromise(
+        summarizer.summarizeWatch("before", "after").pipe(Effect.provide(BunHttpClient.layer))
+      )
+    ).resolves.toContain("Previous cycle:\nbefore")
   })
 
   it("runs a full batch session and rejects tty stdin", async () => {
@@ -133,7 +138,7 @@ describe("services/distill-engine", () => {
         runtime,
         modelGateway: makeModelGateway(() => Effect.succeed("summary")),
         config,
-      })
+      }).pipe(Effect.provide(BunHttpClient.layer))
     )
 
     runtime.stdin.emit("data", Buffer.from("hello"))
@@ -151,7 +156,7 @@ describe("services/distill-engine", () => {
           runtime: ttyRuntime,
           modelGateway: makeModelGateway(() => Effect.succeed("summary")),
           config,
-        })
+        }).pipe(Effect.provide(BunHttpClient.layer))
       )
     ).rejects.toBeInstanceOf(UsageError)
   })
@@ -170,7 +175,9 @@ describe("services/distill-engine", () => {
       )
     )
 
-    await expect(Effect.runPromise(service.run(config))).rejects.toBeInstanceOf(UsageError)
+    await expect(
+      Effect.runPromise(service.run(config).pipe(Effect.provide(BunHttpClient.layer)))
+    ).rejects.toBeInstanceOf(UsageError)
   })
 
   it("wraps unexpected failures in DistillError and falls back to raw stdout", async () => {
@@ -188,7 +195,7 @@ describe("services/distill-engine", () => {
       )
     )
 
-    const promise = Effect.runPromise(service.run(config))
+    const promise = Effect.runPromise(service.run(config).pipe(Effect.provide(BunHttpClient.layer)))
     runtime.stdin.emit("data", Buffer.from("raw input"))
     runtime.stdin.emit("end")
 

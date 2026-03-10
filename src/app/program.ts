@@ -9,7 +9,7 @@ import { VERSION } from "@/app/version"
 import { qqCommand } from "@/cli/command"
 import { Live } from "@/layers/live"
 import { setExitCode, writeStderr } from "@/platform/stdio"
-import type { ConfigStoreError, DistillError, UsageError } from "@/schema/errors"
+import { ConfigStoreError, DistillError, UsageError } from "@/schema/errors"
 
 export type HandledError =
   | CliError.CliError
@@ -26,7 +26,7 @@ export const failWith = (message: string, exitCode: number) =>
   })
 
 const hasTag = (error: unknown): error is { _tag: string; message: string } =>
-  typeof error === "object" && error !== null && "_tag" in error && "message" in error
+  error instanceof UsageError || error instanceof ConfigStoreError || error instanceof DistillError
 
 export const handleError = (error: HandledError) => {
   if (CliError.isCliError(error) && error._tag === "ShowHelp") {
@@ -37,11 +37,11 @@ export const handleError = (error: HandledError) => {
     return failWith(error.message, 2)
   }
 
-  if (hasTag(error) && error._tag === "UsageError") {
+  if (error instanceof UsageError) {
     return failWith(error.message, error.exitCode)
   }
 
-  if (hasTag(error) && (error._tag === "ConfigStoreError" || error._tag === "DistillError")) {
+  if (error instanceof ConfigStoreError || error instanceof DistillError) {
     return failWith(error.message, 1)
   }
 

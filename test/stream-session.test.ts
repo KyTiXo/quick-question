@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, vi } from "bun:test"
+import * as Effect from "effect/Effect"
 
 import { StreamSession } from "@/domain/stream-session"
 
@@ -37,8 +38,8 @@ describe("domain/stream-session", () => {
     const phases: Array<string> = []
     let stopped = 0
     const summarizer = {
-      summarizeBatch: mock(async () => "short"),
-      summarizeWatch: mock(async () => "watch"),
+      summarizeBatch: mock(() => Effect.succeed("short")),
+      summarizeWatch: mock(() => Effect.succeed("watch")),
     }
     const session = new StreamSession({
       summarizer,
@@ -56,7 +57,7 @@ describe("domain/stream-session", () => {
 
     session.push(Buffer.from("hello"))
     vi.advanceTimersByTime(2)
-    await session.end()
+    await Effect.runPromise(session.end())
 
     expect(summarizer.summarizeBatch).toHaveBeenCalledWith("hello")
     expect(stdout.chunks.join("")).toBe("short\n")
@@ -69,22 +70,22 @@ describe("domain/stream-session", () => {
     const emptyStdout = makeWriter()
     const emptySession = new StreamSession({
       summarizer: {
-        summarizeBatch: mock(async () => "unused"),
-        summarizeWatch: mock(async () => "unused"),
+        summarizeBatch: mock(() => Effect.succeed("unused")),
+        summarizeWatch: mock(() => Effect.succeed("unused")),
       },
       stdout: emptyStdout,
       isTTY: false,
       progressFrameMs: 0,
     })
 
-    await emptySession.end()
+    await Effect.runPromise(emptySession.end())
     expect(emptyStdout.chunks).toEqual([])
 
     const rawStdout = makeWriter()
     const rawSession = new StreamSession({
       summarizer: {
-        summarizeBatch: mock(async (input: string) => input),
-        summarizeWatch: mock(async () => "unused"),
+        summarizeBatch: mock((input: string) => Effect.succeed(input)),
+        summarizeWatch: mock(() => Effect.succeed("unused")),
       },
       stdout: rawStdout,
       isTTY: false,
@@ -92,7 +93,7 @@ describe("domain/stream-session", () => {
     })
 
     rawSession.push(Buffer.from("raw input"))
-    await rawSession.end()
+    await Effect.runPromise(rawSession.end())
 
     expect(rawStdout.chunks.join("")).toBe("raw input")
   })
@@ -101,10 +102,8 @@ describe("domain/stream-session", () => {
     const stdout = makeWriter()
     const session = new StreamSession({
       summarizer: {
-        summarizeBatch: mock(async () => {
-          throw new Error("should not summarize")
-        }),
-        summarizeWatch: mock(async () => "unused"),
+        summarizeBatch: mock(() => Effect.fail(new Error("should not summarize"))),
+        summarizeWatch: mock(() => Effect.succeed("unused")),
       },
       stdout,
       isTTY: false,
@@ -116,7 +115,7 @@ describe("domain/stream-session", () => {
     session.push(Buffer.from("Continue?"))
     vi.advanceTimersByTime(6)
     session.push(Buffer.from(" yes"))
-    await session.end()
+    await Effect.runPromise(session.end())
 
     expect(stdout.chunks.join("")).toBe("Continue? yes")
   })
@@ -124,9 +123,9 @@ describe("domain/stream-session", () => {
   it("renders non-tty watch summaries and inserts separators between cycles", async () => {
     const stdout = makeWriter()
     const summarizer = {
-      summarizeBatch: mock(async () => "unused"),
-      summarizeWatch: mock(async (_previous: string, current: string) =>
-        current.includes("third cycle") ? "second summary" : "first summary"
+      summarizeBatch: mock(() => Effect.succeed("unused")),
+      summarizeWatch: mock((_previous: string, current: string) =>
+        Effect.succeed(current.includes("third cycle") ? "second summary" : "first summary")
       ),
     }
     const session = new StreamSession({
@@ -146,7 +145,7 @@ describe("domain/stream-session", () => {
     session.push(Buffer.from("\u001b[2Jthird cycle"))
     vi.advanceTimersByTime(5)
     await flush()
-    await session.end()
+    await Effect.runPromise(session.end())
 
     expect(summarizer.summarizeWatch).toHaveBeenCalledTimes(2)
     expect(stdout.chunks.join("")).toBe("first summary\n\nsecond summary\n")
@@ -156,8 +155,8 @@ describe("domain/stream-session", () => {
     const stdout = makeWriter(true)
     const session = new StreamSession({
       summarizer: {
-        summarizeBatch: mock(async () => "unused"),
-        summarizeWatch: mock(async () => "tty summary"),
+        summarizeBatch: mock(() => Effect.succeed("unused")),
+        summarizeWatch: mock(() => Effect.succeed("tty summary")),
       },
       stdout,
       isTTY: true,
@@ -171,7 +170,7 @@ describe("domain/stream-session", () => {
     session.push(Buffer.from("\u001b[2Jafter"))
     vi.advanceTimersByTime(5)
     await flush()
-    await session.end()
+    await Effect.runPromise(session.end())
 
     expect(stdout.chunks.join("")).toBe("\u001b[2J\u001b[Htty summary\n")
   })
@@ -180,8 +179,8 @@ describe("domain/stream-session", () => {
     const rawStdout = makeWriter()
     const rawSession = new StreamSession({
       summarizer: {
-        summarizeBatch: mock(async () => "unused"),
-        summarizeWatch: mock(async (_previous: string, current: string) => current),
+        summarizeBatch: mock(() => Effect.succeed("unused")),
+        summarizeWatch: mock((_previous: string, current: string) => Effect.succeed(current)),
       },
       stdout: rawStdout,
       isTTY: false,
@@ -196,17 +195,15 @@ describe("domain/stream-session", () => {
     vi.advanceTimersByTime(5)
     await flush()
     rawSession.push(Buffer.from(" tail"))
-    await rawSession.end()
+    await Effect.runPromise(rawSession.end())
 
     expect(rawStdout.chunks.join("")).toBe("\u001b[2Jcurrent tail")
 
     const thrownStdout = makeWriter()
     const thrownSession = new StreamSession({
       summarizer: {
-        summarizeBatch: mock(async () => "unused"),
-        summarizeWatch: mock(async () => {
-          throw new Error("boom")
-        }),
+        summarizeBatch: mock(() => Effect.succeed("unused")),
+        summarizeWatch: mock(() => Effect.fail(new Error("boom"))),
       },
       stdout: thrownStdout,
       isTTY: false,
@@ -220,7 +217,7 @@ describe("domain/stream-session", () => {
     thrownSession.push(Buffer.from("\u001b[2Jcurrent"))
     vi.advanceTimersByTime(5)
     await flush()
-    await thrownSession.end()
+    await Effect.runPromise(thrownSession.end())
 
     expect(thrownStdout.chunks.join("")).toBe("\u001b[2Jcurrent")
   })

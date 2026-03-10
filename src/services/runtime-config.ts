@@ -136,6 +136,34 @@ const pickString = (...values: Array<string | undefined>) => {
   }
 }
 
+const resolveParsedInput = <A>({
+  cli,
+  env,
+  persisted,
+  fallback,
+  parse,
+}: {
+  cli?: string
+  env?: string
+  persisted?: A
+  fallback: A
+  parse: (raw: string) => Effect.Effect<A, UsageError>
+}) => {
+  const raw = pickString(cli, env)
+
+  return raw ? parse(raw) : Effect.succeed(persisted ?? fallback)
+}
+
+const resolveParsedString = <A>({
+  values,
+  fallback,
+  parse,
+}: {
+  values: Array<string | undefined>
+  fallback: string
+  parse: (raw: string) => Effect.Effect<A, UsageError>
+}) => parse(pickString(...values) ?? fallback)
+
 const envHostForProvider = (env: EnvValues, provider: Provider) =>
   provider === "openai"
     ? pickString(env.openAiBaseUrl, env.host)
@@ -149,14 +177,21 @@ const resolveProviderInput = ({
   cli?: string
   env?: string
   persisted?: Provider
-}) => {
-  const raw = pickString(cli, env)
-
-  return raw ? parseProviderValue(raw, "Provider") : Effect.succeed(persisted ?? DEFAULT_PROVIDER)
-}
+}) =>
+  resolveParsedInput({
+    cli,
+    env,
+    persisted,
+    fallback: DEFAULT_PROVIDER,
+    parse: (raw) => parseProviderValue(raw, "Provider"),
+  })
 
 const resolveModelInput = (...values: Array<string | undefined>) =>
-  parseModelValue(pickString(...values) ?? DEFAULT_MODEL)
+  resolveParsedString({
+    values,
+    fallback: DEFAULT_MODEL,
+    parse: parseModelValue,
+  })
 
 const resolveHostInput = ({
   provider,
@@ -169,9 +204,11 @@ const resolveHostInput = ({
   env?: string
   persisted?: string
 }) =>
-  parseHostValue(
-    pickString(cli, env, persisted, defaultHostFor(provider)) ?? defaultHostFor(provider)
-  )
+  resolveParsedString({
+    values: [cli, env, persisted, defaultHostFor(provider)],
+    fallback: defaultHostFor(provider),
+    parse: parseHostValue,
+  })
 
 const resolveTimeoutInput = ({
   cli,
@@ -181,11 +218,14 @@ const resolveTimeoutInput = ({
   cli?: string
   env?: string
   persisted?: number
-}) => {
-  const raw = pickString(cli, env)
-
-  return raw ? parseTimeoutValue(raw) : Effect.succeed(persisted ?? DEFAULT_TIMEOUT_MS)
-}
+}) =>
+  resolveParsedInput({
+    cli,
+    env,
+    persisted,
+    fallback: DEFAULT_TIMEOUT_MS,
+    parse: parseTimeoutValue,
+  })
 
 const resolveThinkingInput = ({
   cli,
@@ -195,11 +235,14 @@ const resolveThinkingInput = ({
   cli?: string
   env?: string
   persisted?: boolean
-}) => {
-  const raw = pickString(cli, env)
-
-  return raw ? parseBooleanValue(raw, "Thinking") : Effect.succeed(persisted ?? false)
-}
+}) =>
+  resolveParsedInput({
+    cli,
+    env,
+    persisted,
+    fallback: false,
+    parse: (raw) => parseBooleanValue(raw, "Thinking"),
+  })
 
 const resolveQuestion = (parts: ReadonlyArray<string>) => {
   const question = joinQuestion(parts)
@@ -325,17 +368,18 @@ export class RuntimeConfig extends ServiceMap.Service<RuntimeConfig>()("RuntimeC
   make: Effect.gen(function* () {
     const configStore = yield* ConfigStore
     const runtime = yield* AppRuntime
+    const loadRuntimeEnv = runtime.getEnv.pipe(Effect.flatMap(loadEnv))
 
     const defaults = () =>
       Effect.gen(function* () {
-        const env = yield* runtime.getEnv.pipe(Effect.flatMap(loadEnv))
+        const env = yield* loadRuntimeEnv
         return yield* makeDefaults(env)
       })
 
     const getEffectiveConfig = () =>
       Effect.gen(function* () {
         const persisted = yield* configStore.read()
-        const env = yield* runtime.getEnv.pipe(Effect.flatMap(loadEnv))
+        const env = yield* loadRuntimeEnv
         return yield* makeEffectiveConfig({ env, persisted })
       })
 
@@ -360,7 +404,7 @@ export class RuntimeConfig extends ServiceMap.Service<RuntimeConfig>()("RuntimeC
       resolveRunConfig: (input: CliRunInput) =>
         Effect.gen(function* () {
           const persisted = yield* configStore.read()
-          const env = yield* runtime.getEnv.pipe(Effect.flatMap(loadEnv))
+          const env = yield* loadRuntimeEnv
           return yield* makeResolvedRunConfig({
             input,
             env,

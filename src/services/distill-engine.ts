@@ -32,69 +32,47 @@ export const progressOptions = (runtime: RuntimeLike) => {
   }
 }
 
-export const readIntoSession = (stdin: RuntimeInput, session: StreamSession) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const listenerState = yield* Effect.acquireRelease(
-        Effect.sync(() => {
-          let resolve: (value: void | PromiseLike<void>) => void = () => {}
-          let reject: (reason?: unknown) => void = () => {}
-          const done = new Promise<void>((innerResolve, innerReject) => {
-            resolve = innerResolve
-            reject = innerReject
-          })
-          const onData = (chunk: string | Uint8Array) => {
-            session.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-          }
-          const onEnd = () => {
-            resolve()
-          }
-          const onError = (error: unknown) => {
-            reject(error)
-          }
+export const readIntoSession = <E, R>(stdin: RuntimeInput, session: StreamSession<E, R>) =>
+  Effect.callback<void, unknown>((resume) => {
+    const cleanup = () => {
+      stdin.off?.("data", onData)
+      stdin.off?.("end", onEnd)
+      stdin.off?.("error", onError)
+    }
+    const onData = (chunk: string | Uint8Array) => {
+      session.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    const onEnd = () => {
+      cleanup()
+      resume(Effect.void)
+    }
+    const onError = (error: unknown) => {
+      cleanup()
+      resume(Effect.fail(error))
+    }
 
-          stdin.on("data", onData)
-          stdin.on("end", onEnd)
-          stdin.on("error", onError)
-          stdin.resume()
+    stdin.on("data", onData)
+    stdin.on("end", onEnd)
+    stdin.on("error", onError)
+    stdin.resume()
 
-          return {
-            done,
-            cleanup: () => {
-              stdin.off?.("data", onData)
-              stdin.off?.("end", onEnd)
-              stdin.off?.("error", onError)
-            },
-          }
-        }),
-        ({ cleanup }) =>
-          Effect.sync(() => {
-            cleanup()
-          })
-      )
-
-      yield* Effect.promise(() => listenerState.done)
-    })
-  )
+    return Effect.sync(cleanup)
+  })
 
 export const summarizerFor = (
   modelGateway: typeof ModelGateway.Service,
   config: ResolvedRunConfig
 ) => ({
   summarizeBatch: (input: string) =>
-    Effect.runPromise(
-      modelGateway.generateText({
-        config,
-        prompt: buildBatchPrompt(config.question, input),
-      })
-    ),
+    modelGateway.generateText({
+      config,
+      prompt: buildBatchPrompt(config.question, input),
+    }),
   summarizeWatch: (previousCycle: string, currentCycle: string) =>
-    Effect.runPromise(
-      modelGateway.generateText({
-        config,
-        prompt: buildWatchPrompt(config.question, previousCycle, currentCycle),
-      })
-    ),
+    modelGateway.generateText({
+      config,
+      prompt: buildWatchPrompt(config.question, previousCycle, currentCycle),
+    }),
 })
 
 export const runSession = ({
@@ -129,14 +107,15 @@ export const runSession = ({
       )
 
       yield* readIntoSession(runtime.stdin, session)
-      yield* Effect.tryPromise({
-        try: () => session.end(),
-        catch: (cause) =>
-          new DistillError({
-            detail: "qq failed while processing stdin.",
-            cause,
-          }),
-      })
+      yield* session.end().pipe(
+        Effect.mapError(
+          (cause) =>
+            new DistillError({
+              detail: "qq failed while processing stdin.",
+              cause,
+            })
+        )
+      )
     })
   )
 

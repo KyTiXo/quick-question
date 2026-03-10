@@ -1,7 +1,8 @@
-import * as BunHttpClient from "@effect/platform-bun/BunHttpClient"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
 import { AiError } from "effect/unstable/ai"
+import * as HttpClient from "effect/unstable/http/HttpClient"
+import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
 import { ModelError } from "@/schema/errors"
 
 const toModelError = (description: string, cause?: unknown) =>
@@ -31,44 +32,38 @@ export const requestJson = <S extends Schema.Top>({
   method: string
 }) =>
   Effect.gen(function* () {
-    const fetch = yield* BunHttpClient.Fetch
-    const response = yield* Effect.tryPromise({
-      try: () => {
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    const request = HttpClientRequest.post(url).pipe(
+      HttpClientRequest.setHeaders({
+        "content-type": "application/json",
+        ...headers,
+      }),
+      HttpClientRequest.acceptJson,
+      HttpClientRequest.bodyJsonUnsafe(body)
+    )
+    const requestFailure = (cause: unknown) => {
+      const aiError = AiError.make({
+        module,
+        method,
+        reason: new AiError.UnknownError({
+          description: "Request failed before receiving a response.",
+        }),
+      })
 
-        return fetch(
-          new Request(url.toString(), {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              ...headers,
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-          })
-        ).finally(() => {
-          clearTimeout(timeout)
-        })
-      },
-      catch: (cause) => {
-        const aiError = AiError.make({
-          module,
-          method,
-          reason: new AiError.UnknownError({
-            description: "Request failed before receiving a response.",
-          }),
-        })
+      return toModelError(aiError.message, cause)
+    }
+    const response = yield* HttpClient.execute(request).pipe(
+      Effect.timeoutOrElse({
+        duration: timeoutMs,
+        onTimeout: () =>
+          Effect.fail(requestFailure(new Error(`Request timed out after ${timeoutMs}ms.`))),
+      }),
+      Effect.mapError(requestFailure)
+    )
+    const rawText = yield* response.text.pipe(
+      Effect.mapError((cause) => toModelError("Failed reading provider response.", cause))
+    )
 
-        return toModelError(aiError.message, cause)
-      },
-    })
-    const rawText = yield* Effect.tryPromise({
-      try: () => response.text(),
-      catch: (cause) => toModelError("Failed reading provider response.", cause),
-    })
-
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       const body = yield* parseJson(rawText).pipe(Effect.orElseSucceed(() => rawText))
       const aiError = AiError.make({
         module,

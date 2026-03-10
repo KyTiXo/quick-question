@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect"
 import {
   DEFAULT_IDLE_MS,
   DEFAULT_INTERACTIVE_GAP_MS,
@@ -33,13 +34,13 @@ export interface WriterLike {
   write(chunk: string | Uint8Array): unknown
 }
 
-export interface SessionSummarizer {
-  summarizeBatch(input: string): Promise<string>
-  summarizeWatch(previousCycle: string, currentCycle: string): Promise<string>
+export interface SessionSummarizer<E = unknown, R = never> {
+  summarizeBatch(input: string): Effect.Effect<string, E, R>
+  summarizeWatch(previousCycle: string, currentCycle: string): Effect.Effect<string, E, R>
 }
 
-export interface StreamSessionOptions {
-  summarizer: SessionSummarizer
+export interface StreamSessionOptions<E = unknown, R = never> {
+  summarizer: SessionSummarizer<E, R>
   stdout: WriterLike
   isTTY: boolean
   progress?: WriterLike
@@ -50,7 +51,7 @@ export interface StreamSessionOptions {
   progressFrameMs?: number
 }
 
-export class StreamSession {
+export class StreamSession<E = unknown, R = never> {
   private readonly summarizer
   private readonly stdout
   private readonly isTTY
@@ -70,7 +71,7 @@ export class StreamSession {
   private idleTimer: ReturnType<typeof setTimeout> | null = null
   private interactiveTimer: ReturnType<typeof setTimeout> | null = null
   private progressTimer: ReturnType<typeof setInterval> | null = null
-  private queue: Promise<void> = Promise.resolve()
+  private queue: Effect.Effect<void, never, R> = Effect.void
   private nextBurstId = 1
   private emittedWatchOutput = false
   private passthrough = false
@@ -78,7 +79,7 @@ export class StreamSession {
   private progressFrameIndex = 0
   private lastProgressRenderAt = 0
 
-  constructor(options: StreamSessionOptions) {
+  constructor(options: StreamSessionOptions<E, R>) {
     this.summarizer = options.summarizer
     this.stdout = options.stdout
     this.isTTY = options.isTTY
@@ -114,46 +115,50 @@ export class StreamSession {
     this.renderProgressIfDue()
   }
 
-  async end() {
+  end() {
     this.clearTimers()
 
     if (this.passthrough) {
       this.stopProgress(true)
-      return
+      return Effect.void
     }
 
     this.closeCurrentBurst()
 
     if (this.mode === "watch") {
       this.scheduleLatestWatchRender()
-      await this.queue
-      return
+      return this.queue
     }
 
     const rawInput = Buffer.concat(this.rawBuffers).toString("utf8")
 
     if (!rawInput) {
       this.stopProgress(true)
-      return
+      return Effect.void
     }
 
-    try {
-      this.setProgressPhase("summarizing")
-      const summary = await this.summarizer.summarizeBatch(normalizeForModel(rawInput))
+    this.setProgressPhase("summarizing")
 
-      if (looksLikeBadDistillation(rawInput, summary)) {
-        this.stopProgress(true)
-        this.stdout.write(Buffer.concat(this.rawBuffers))
-        return
-      }
+    return this.summarizer.summarizeBatch(normalizeForModel(rawInput)).pipe(
+      Effect.flatMap((summary) =>
+        Effect.sync(() => {
+          if (looksLikeBadDistillation(rawInput, summary)) {
+            this.stopProgress(true)
+            this.stdout.write(Buffer.concat(this.rawBuffers))
+            return
+          }
 
-      this.stopProgress(true)
-      this.stdout.write(ensureTrailingNewline(summary.trim()))
-    } catch (cause) {
-      this.stopProgress(true)
-      this.stdout.write(Buffer.concat(this.rawBuffers))
-      throw cause
-    }
+          this.stopProgress(true)
+          this.stdout.write(ensureTrailingNewline(summary.trim()))
+        })
+      ),
+      Effect.catch((cause) =>
+        Effect.sync(() => {
+          this.stopProgress(true)
+          this.stdout.write(Buffer.concat(this.rawBuffers))
+        }).pipe(Effect.flatMap(() => Effect.fail(cause)))
+      )
+    )
   }
 
   dispose() {
@@ -353,24 +358,28 @@ export class StreamSession {
     }
 
     this.renderedPairs.add(key)
-    this.queue = this.queue.then(async () => {
-      try {
-        const summary = await this.summarizer.summarizeWatch(
-          pair.previous.normalized,
-          pair.current.normalized
+    this.queue = this.queue.pipe(
+      Effect.andThen(
+        this.summarizer.summarizeWatch(pair.previous.normalized, pair.current.normalized).pipe(
+          Effect.flatMap((summary) =>
+            Effect.sync(() => {
+              if (looksLikeBadDistillation(pair.current.raw, summary)) {
+                this.renderWatchFallback(pair.current.raw)
+                return
+              }
+
+              this.renderWatchSummary(summary.trim())
+              this.trimWatchHistory()
+            })
+          ),
+          Effect.catch(() =>
+            Effect.sync(() => {
+              this.renderWatchFallback(pair.current.raw)
+            })
+          )
         )
-
-        if (looksLikeBadDistillation(pair.current.raw, summary)) {
-          this.renderWatchFallback(pair.current.raw)
-          return
-        }
-
-        this.renderWatchSummary(summary.trim())
-        this.trimWatchHistory()
-      } catch {
-        this.renderWatchFallback(pair.current.raw)
-      }
-    })
+      )
+    )
   }
 
   private renderWatchSummary(summary: string) {

@@ -111,3 +111,14 @@ This reduces token usage and keeps context focused.
 - **Interactive passthrough** — `[Y/N]`, `Password:` prompts are forwarded raw, no LLM involvement.
 - **Bad-summary fallback** — if the model response is longer than the input or is a refusal, the original input passes through unchanged.
 - **Machine-readable progress** — set `QQ_PROGRESS_PROTOCOL=stderr` for structured markers (useful in CI or agent harnesses).
+
+## Manual sanity scripts
+
+For quick manual confidence checks:
+
+```bash
+bun run test:live
+bun run test:explode
+```
+
+`test:explode` runs a few prompt/input combinations in sequence, including one expected failure path. It is manual-only and is not part of `check:all`.

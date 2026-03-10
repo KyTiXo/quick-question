@@ -1,6 +1,6 @@
 ## Validation
 
-Run `bun run check:all` after finishing code changes. Fixes formatting, then runs typecheck + tests.
+Run `bun run check:all:qq` after finishing code changes. Fixes formatting, then runs typecheck + tests.
 
 ## Effect v4 Best Practices
 

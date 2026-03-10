@@ -27,6 +27,7 @@
     "prepare": "husky",
     "test": "bun test --max-concurrency=1",
     "test:live": "bun run scripts/test-live-smoke.ts",
+    "test:explode": "bun run scripts/test-explode.ts",
     "typecheck": "tsc --noEmit",
     "check:all": "biome check --write . && tsc --noEmit && bun test --max-concurrency=1",
     "check:all:qq": "bun run check:all 2>&1 | qq 'did the tests pass?'",
