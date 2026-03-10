@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.10
+
+### Bug Fixes
+
+- Readme explainations
+
+
+### Miscellaneous
+
+- Change to dark green badge
+
 ## 0.1.8
 
 ### Features
