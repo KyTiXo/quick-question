@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.12
+
+### Miscellaneous
+
+- Stop git-cliff fetching unused GitHub PR metadata (#1)
+
+- Publish to npm via trusted publishing (#2)
+
 ## 0.1.11
 
 ### Bug Fixes
