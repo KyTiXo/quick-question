@@ -18,7 +18,7 @@ on:
       - ".editorconfig"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,6 +27,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.results.outputs.pass }}
+      fail: ${{ steps.results.outputs.fail }}
+      coverage: ${{ steps.results.outputs.coverage }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -69,6 +73,24 @@ jobs:
           [ -n "${FAIL}" ] || { echo "::error::Could not parse failed test count"; exit 1; }
           [ -n "${COVERAGE}" ] || { echo "::error::Could not parse line coverage"; exit 1; }
 
+          {
+            echo "pass=${PASS}"
+            echo "fail=${FAIL}"
+            echo "coverage=${COVERAGE}"
+          } >> "$GITHUB_OUTPUT"
+
+  # Publishes badges from the build job's outputs; never runs dependency code.
+  badges:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish badges
+        run: |
+          set -euo pipefail
+
           COV_INT=${COVERAGE%.*}
           if [ "$COV_INT" -ge 90 ]; then COV_COLOR="darkgreen"
           elif [ "$COV_INT" -ge 80 ]; then COV_COLOR="green"
@@ -93,10 +115,6 @@ jobs:
           { "schemaVersion": 1, "label": "coverage", "message": "${COVERAGE}%", "color": "${COV_COLOR}" }
           EOF
 
-      - name: Publish badges
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          set -euo pipefail
           cd badges
           git init -b badges
           git add .
@@ -109,4 +127,7 @@ jobs:
           git commit -m "update badges"
           git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" badges
         env:
+          PASS: ${{ needs.build.outputs.pass }}
+          FAIL: ${{ needs.build.outputs.fail }}
+          COVERAGE: ${{ needs.build.outputs.coverage }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
