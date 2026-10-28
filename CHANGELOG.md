@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.13
+
+### Miscellaneous
+
+- Renovate supply-chain hardening (#4)
+
 ## 0.1.12
 
 ### Miscellaneous
