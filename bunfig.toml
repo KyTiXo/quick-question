@@ -1,5 +1,5 @@
 [install]
-# Skip npm versions published less than 3 days ago (seconds).
+# Skip npm versions published less than 3 days ago (seconds). Also delays Renovate security PRs; for an urgent CVE add the package to minimumReleaseAgeExcludes.
 minimumReleaseAge = 259200
 
 [test]
