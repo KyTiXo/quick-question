@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   publish:
-    if: github.actor != 'github-actions[bot]'
+    # Skip release commits and Renovate's automerged `chore(deps...)` updates; `fix(deps)` still releases.
+    if: github.actor != 'github-actions[bot]' && !startsWith(github.event.head_commit.message, 'chore(deps')
     runs-on: ubuntu-latest
     permissions:
       contents: write
